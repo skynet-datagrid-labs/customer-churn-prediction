@@ -48,11 +48,12 @@ class DataValidator:
         missing_counts = self.data.isnull().sum()
         missing_percentages = (missing_counts / len(self.data)) * 100
         
+        # Convert numpy types to Python native types for JSON serialization
         result = {
             'total_missing': int(missing_counts.sum()),
-            'columns_with_missing': missing_counts[missing_counts > 0].to_dict(),
-            'missing_percentages': missing_percentages[missing_percentages > 0].to_dict(),
-            'has_missing': missing_counts.sum() > 0
+            'columns_with_missing': {k: int(v) for k, v in missing_counts[missing_counts > 0].to_dict().items()},
+            'missing_percentages': {k: float(v) for k, v in missing_percentages[missing_percentages > 0].to_dict().items()},
+            'has_missing': bool(missing_counts.sum() > 0)  # Convert to Python bool
         }
         
         logger.info(f"Missing values check: {result['total_missing']} total missing values")
@@ -68,7 +69,7 @@ class DataValidator:
         result = {
             'duplicate_rows': int(duplicate_count),
             'duplicate_customer_ids': int(customer_id_duplicates),
-            'has_duplicates': duplicate_count > 0 or customer_id_duplicates > 0
+            'has_duplicates': bool(duplicate_count > 0 or customer_id_duplicates > 0)  # Convert to Python bool
         }
         
         logger.info(f"Duplicates check: {duplicate_count} duplicate rows, {customer_id_duplicates} duplicate customer IDs")
@@ -116,7 +117,7 @@ class DataValidator:
                 type_validation[col] = {
                     'expected': expected_type,
                     'actual': actual_type,
-                    'is_correct': expected_type in actual_type if expected_type else True
+                    'is_correct': bool(expected_type in actual_type if expected_type else True)  # Convert to Python bool
                 }
         
         return type_validation
@@ -138,7 +139,7 @@ class DataValidator:
                     'max_expected': rules['max'],
                     'max_actual': float(max_val),
                     'out_of_range_count': int(out_of_range),
-                    'is_valid': out_of_range == 0
+                    'is_valid': bool(out_of_range == 0)  # Convert to Python bool
                 }
         
         return range_validation
@@ -158,7 +159,7 @@ class DataValidator:
                     'allowed_values': allowed,
                     'unique_values': unique_values,
                     'invalid_values': invalid_values,
-                    'is_valid': len(invalid_values) == 0
+                    'is_valid': bool(len(invalid_values) == 0)  # Convert to Python bool
                 }
         
         # Check churn values
@@ -171,8 +172,8 @@ class DataValidator:
                 'allowed_values': allowed,
                 'unique_values': unique_values,
                 'invalid_values': invalid_values,
-                'is_valid': len(invalid_values) == 0,
-                'class_distribution': self.data['churn'].value_counts().to_dict()
+                'is_valid': bool(len(invalid_values) == 0),  # Convert to Python bool
+                'class_distribution': {int(k): int(v) for k, v in self.data['churn'].value_counts().to_dict().items()}  # Convert numpy types
             }
         
         return categorical_validation
@@ -186,12 +187,12 @@ class DataValidator:
         churn_percentages = (churn_counts / len(self.data)) * 100
         
         result = {
-            'total_samples': len(self.data),
+            'total_samples': int(len(self.data)),
             'churn_0_count': int(churn_counts.get(0, 0)),
             'churn_1_count': int(churn_counts.get(1, 0)),
             'churn_0_percentage': float(churn_percentages.get(0, 0)),
             'churn_1_percentage': float(churn_percentages.get(1, 0)),
-            'is_balanced': 20 <= churn_percentages.get(1, 0) <= 80
+            'is_balanced': bool(20 <= churn_percentages.get(1, 0) <= 80)  # Convert to Python bool
         }
         
         return result
@@ -202,8 +203,8 @@ class DataValidator:
         
         self.validation_results = {
             'timestamp': datetime.now().isoformat(),
-            'total_rows': len(self.data),
-            'total_columns': len(self.data.columns),
+            'total_rows': int(len(self.data)),
+            'total_columns': int(len(self.data.columns)),
             'missing_values': self.check_missing_values(),
             'duplicates': self.check_duplicates(),
             'outliers': self.check_outliers(),
@@ -227,12 +228,12 @@ class DataValidator:
                 issues.append(f"Out of range values in {col}")
         
         for col, validation in self.validation_results['categorical_values'].items():
-            if not validation['is_valid']:
+            if not validation.get('is_valid', True):
                 issues.append(f"Invalid categorical values in {col}")
         
         self.validation_results['overall_status'] = {
-            'is_valid': len(issues) == 0,
-            'issues_count': len(issues),
+            'is_valid': bool(len(issues) == 0),  # Convert to Python bool
+            'issues_count': int(len(issues)),
             'issues_list': issues,
             'severity': 'HIGH' if len(issues) > 3 else 'MEDIUM' if len(issues) > 0 else 'LOW'
         }
@@ -248,8 +249,21 @@ class DataValidator:
         try:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             
+            # Custom JSON encoder to handle any remaining numpy types
+            class NumpyEncoder(json.JSONEncoder):
+                def default(self, obj):
+                    if isinstance(obj, np.integer):
+                        return int(obj)
+                    if isinstance(obj, np.floating):
+                        return float(obj)
+                    if isinstance(obj, np.bool_):
+                        return bool(obj)
+                    if isinstance(obj, np.ndarray):
+                        return obj.tolist()
+                    return super(NumpyEncoder, self).default(obj)
+            
             with open(output_path, 'w') as f:
-                json.dump(self.validation_results, f, indent=2)
+                json.dump(self.validation_results, f, indent=2, cls=NumpyEncoder)
             
             logger.info(f"Validation report saved to {output_path}")
             
@@ -314,7 +328,7 @@ def main():
                 print(f"  ⚠️ {issue}")
         
         # Print class distribution
-        if 'statistical_balance' in results:
+        if 'statistical_balance' in results and results['statistical_balance']:
             sb = results['statistical_balance']
             print(f"\nTarget Variable Distribution:")
             print(f"  Churn=0: {sb['churn_0_count']} ({sb['churn_0_percentage']:.2f}%)")
