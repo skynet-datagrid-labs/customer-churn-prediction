@@ -1,51 +1,86 @@
-name: Model Retraining
+name: Scheduled Retraining
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '0 2 * * 0'  # Weekly on Sunday at 2 AM
+    - cron: '0 0 * * 0'  # Weekly on Sunday at midnight
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for retraining'
+        required: false
+        default: 'Manual trigger'
 
 jobs:
-  retrain:
+  retrain-pipeline:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
       
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
       
       - name: Install dependencies
         run: pip install -r requirements.txt
       
-      - name: Download production model
-        uses: actions/download-artifact@v4
-        with:
-          name: best-model
-          path: artifacts/models/
-        continue-on-error: true
-      
-      - name: Run complete retraining pipeline
+      - name: Download latest data
         run: |
-          python src/ingest.py --retraining
-          python src/validate.py --retraining
-          python src/preprocess.py --retraining
-          python src/feature_engineering.py --retraining
-          python src/train.py --model logistic_regression --retraining
-          python src/train.py --model random_forest --retraining
-          python src/train.py --model xgboost --retraining
-          python src/evaluate.py --retraining
-          python src/select_model.py --retraining --compare
+          python -c "
+          import pandas as pd
+          import numpy as np
+          from datetime import datetime, timedelta
+          
+          # Simulate new data with slight variations
+          np.random.seed(42)
+          n_samples = 500
+          
+          data = {
+              'customer_id': range(1000, 1000 + n_samples),
+              'age': np.random.normal(45, 15, n_samples).clip(18, 80).astype(int),
+              'gender': np.random.choice(['Male', 'Female'], n_samples),
+              'tenure_months': np.random.exponential(30, n_samples).clip(1, 72).astype(int),
+              'monthly_spend': np.random.gamma(5, 50, n_samples).clip(10, 800),
+              'contract_type': np.random.choice(['Monthly', 'Yearly'], n_samples, p=[0.6, 0.4]),
+              'support_tickets': np.random.poisson(3, n_samples).clip(0, 15),
+              'last_login_days': np.random.uniform(0, 60, n_samples).astype(int),
+              'satisfaction_score': np.random.choice(range(1, 11), n_samples, p=[0.05,0.05,0.1,0.1,0.1,0.15,0.15,0.15,0.1,0.05]),
+              'churn': np.random.binomial(1, 0.3, n_samples)
+          }
+          
+          df = pd.DataFrame(data)
+          df.to_excel('data/fictitious_company_data.xlsx', index=False)
+          print(f'Generated {n_samples} new samples for retraining')
+          "
+      
+      - name: Run full pipeline
+        run: |
+          python src/ingest.py
+          python src/validate.py
+          python src/preprocess.py
+          python src/feature_engineering.py
+          python src/train.py --model logistic_regression
+          python src/train.py --model random_forest
+          python src/train.py --model xgboost
+          python src/evaluate.py
+          python src/select_model.py
+          python src/save_model.py
       
       - name: Upload retrained model
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v3
         with:
-          name: retrained-model
-          path: artifacts/models/best_model.pkl
+          name: retrained-model-$(date +'%Y%m%d')
+          path: artifacts/models/final_model.pkl
+          retention-days: 90
       
-      - name: Retraining summary
+      - name: Log retraining completion
         run: |
-          echo "## Model Retraining Complete" >> $GITHUB_STEP_SUMMARY
-          echo "- Retraining triggered: $(date)" >> $GITHUB_STEP_SUMMARY
-          echo "- New model available in artifacts" >> $GITHUB_STEP_SUMMARY
+          echo "Retraining completed at $(date)" >> retraining_history.log
+          echo "Reason: ${{ github.event.inputs.reason || 'Scheduled retraining' }}" >> retraining_history.log
+      
+      - name: Upload retraining history
+        uses: actions/upload-artifact@v3
+        with:
+          name: retraining-history
+          path: retraining_history.log
