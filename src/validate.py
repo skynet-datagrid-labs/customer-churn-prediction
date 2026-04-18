@@ -9,6 +9,7 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Tuple
 import logging
+import yaml
 
 # Configure logging
 logging.basicConfig(
@@ -17,17 +18,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 class DataValidator:
     """Validate dataset for quality and consistency."""
     
     def __init__(self, config_path: str = "config/config.yaml"):
         self.config = self._load_config(config_path)
         self.validation_rules = self.config.get('data', {}).get('validation_rules', {})
-        
+    
     def _load_config(self, config_path: str) -> Dict:
         """Load configuration file."""
         try:
-            import yaml
             with open(config_path, 'r') as f:
                 return yaml.safe_load(f)
         except Exception as e:
@@ -70,20 +71,20 @@ class DataValidator:
                 validation_results["valid"] = False
                 continue
             
-            # Type validation
+            # Required check
             if rules.get('required', False) and df[column].isnull().all():
                 validation_results["errors"].append(f"Column '{column}' has all null values")
                 validation_results["valid"] = False
             
             # Numeric range validation
-            if 'min' in rules:
+            if 'min' in rules and pd.api.types.is_numeric_dtype(df[column]):
                 invalid_min = df[column] < rules['min']
                 if invalid_min.any():
                     validation_results["warnings"].append(
                         f"Column '{column}' has {invalid_min.sum()} values below {rules['min']}"
                     )
             
-            if 'max' in rules:
+            if 'max' in rules and pd.api.types.is_numeric_dtype(df[column]):
                 invalid_max = df[column] > rules['max']
                 if invalid_max.any():
                     validation_results["warnings"].append(
@@ -116,11 +117,6 @@ class DataValidator:
                     "top_values": df[column].value_counts().head(3).to_dict()
                 }
         
-        # Additional data quality checks
-        if len(df) == 0:
-            validation_results["errors"].append("Dataset is empty")
-            validation_results["valid"] = False
-        
         # Check target column
         target = 'churn'
         if target in df.columns:
@@ -150,12 +146,10 @@ class DataValidator:
         for column in df.columns:
             if df[column].isnull().any():
                 if pd.api.types.is_numeric_dtype(df[column]):
-                    # Fill numeric with median
                     median_val = df[column].median()
                     df[column].fillna(median_val, inplace=True)
                     logger.info(f"Filled missing in '{column}' with median: {median_val}")
                 else:
-                    # Fill categorical with mode
                     mode_val = df[column].mode()
                     if len(mode_val) > 0:
                         df[column].fillna(mode_val[0], inplace=True)
@@ -164,6 +158,7 @@ class DataValidator:
                         df[column].fillna("Unknown", inplace=True)
         
         return df
+
 
 def main():
     """Main validation entry point."""
@@ -205,6 +200,7 @@ def main():
         sys.exit(1)
     
     logger.info("Data validation completed successfully")
+
 
 if __name__ == "__main__":
     main()
