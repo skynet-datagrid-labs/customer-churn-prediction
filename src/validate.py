@@ -8,9 +8,14 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from typing import Dict, Any, Tuple
+import logging
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src import logger
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 class DataValidator:
     """Validate dataset for quality and consistency."""
