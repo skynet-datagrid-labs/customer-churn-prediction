@@ -26,10 +26,37 @@ class ModelArtifactSaver:
         """Load the best model"""
         best_info_path = os.path.join(model_path, "best_model_info.json")
         
+        if not os.path.exists(best_info_path):
+            logger.error(f"Best model info not found at {best_info_path}")
+            # Try to find it in alternative locations
+            alt_paths = ["./artifacts/models/best_model_info.json", "../artifacts/models/best_model_info.json"]
+            for alt in alt_paths:
+                if os.path.exists(alt):
+                    best_info_path = alt
+                    logger.info(f"Found best model info at {alt}")
+                    break
+            else:
+                raise FileNotFoundError(f"best_model_info.json not found")
+        
         with open(best_info_path, 'r') as f:
             best_info = json.load(f)
         
         model_file = os.path.join(model_path, f"{best_info['best_model']}.pkl")
+        
+        # Try alternative paths if not found
+        if not os.path.exists(model_file):
+            alt_model_paths = [
+                f"./artifacts/models/{best_info['best_model']}.pkl",
+                f"../artifacts/models/{best_info['best_model']}.pkl",
+                f"artifacts/models/model-{best_info['best_model']}.pkl"
+            ]
+            for alt in alt_model_paths:
+                if os.path.exists(alt):
+                    model_file = alt
+                    logger.info(f"Found model at {alt}")
+                    break
+            else:
+                raise FileNotFoundError(f"Model file not found for {best_info['best_model']}")
         
         with open(model_file, 'rb') as f:
             self.final_model = pickle.load(f)
@@ -39,6 +66,18 @@ class ModelArtifactSaver:
     
     def load_preprocessor(self, preprocessor_path: str = "artifacts/data/preprocessed_data.pkl"):
         """Load the preprocessor objects"""
+        if not os.path.exists(preprocessor_path):
+            alt_paths = ["./artifacts/data/preprocessed_data.pkl", "../artifacts/data/preprocessed_data.pkl"]
+            for alt in alt_paths:
+                if os.path.exists(alt):
+                    preprocessor_path = alt
+                    logger.info(f"Found preprocessor at {alt}")
+                    break
+            else:
+                logger.warning("Preprocessor not found, creating empty preprocessor")
+                self.preprocessor = {'scaler': None, 'label_encoders': {}}
+                return self.preprocessor
+        
         with open(preprocessor_path, 'rb') as f:
             preprocessed_data = pickle.load(f)
         
@@ -52,6 +91,16 @@ class ModelArtifactSaver:
     
     def load_feature_columns(self, features_path: str = "artifacts/data/features.pkl"):
         """Load feature column names"""
+        if not os.path.exists(features_path):
+            alt_paths = ["./artifacts/data/features.pkl", "../artifacts/data/features.pkl"]
+            for alt in alt_paths:
+                if os.path.exists(alt):
+                    features_path = alt
+                    logger.info(f"Found features at {alt}")
+                    break
+            else:
+                raise FileNotFoundError(f"Features file not found at {features_path}")
+        
         with open(features_path, 'rb') as f:
             features_data = pickle.load(f)
         
@@ -88,7 +137,7 @@ class ModelArtifactSaver:
             # Create model metadata
             metadata = {
                 'model_type': type(self.final_model).__name__,
-                'model_parameters': self.final_model.get_params(),
+                'model_parameters': str(self.final_model.get_params())[:500],  # Convert to string to avoid JSON issues
                 'feature_columns': self.feature_columns,
                 'num_features': len(self.feature_columns),
                 'preprocessor_components': list(self.preprocessor.keys()),
@@ -98,7 +147,7 @@ class ModelArtifactSaver:
             
             metadata_path = os.path.join(output_path, "model_metadata.json")
             with open(metadata_path, 'w') as f:
-                json.dump(metadata, f, indent=2)
+                json.dump(metadata, f, indent=2, default=str)  # default=str handles non-serializable objects
             logger.info(f"Model metadata saved to {metadata_path}")
             
             # Create a deployment package
@@ -122,6 +171,12 @@ class ModelArtifactSaver:
     def generate_model_card(self, output_path: str = "artifacts/models/MODEL_CARD.md"):
         """Generate a model card for documentation"""
         try:
+            # Create feature list string safely
+            feature_list = "\n".join([f"- {col}" for col in self.feature_columns[:10]])
+            more_features = ""
+            if len(self.feature_columns) > 10:
+                more_features = f"\n- ... and {len(self.feature_columns) - 10} more features"
+            
             model_card = f"""# Model Card: Customer Churn Prediction
 
 ## Model Overview
@@ -133,8 +188,7 @@ class ModelArtifactSaver:
 This model predicts customer churn for subscription-based services to enable proactive retention strategies.
 
 ## Features Used
-{chr(10).join([f"- {col}" for col in self.feature_columns[:10]])}
-{chr(10).join([f"- ... and {len(self.feature_columns) - 10} more features" if len(self.feature_columns) > 10 else ""])}
+{feature_list}{more_features}
 
 ## Model Performance
 Based on evaluation metrics, this model achieves:
