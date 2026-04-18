@@ -397,7 +397,13 @@ jobs:
       - name: Generate reports and plots
         run: |
           python -c "
-          import json, matplotlib.pyplot as plt, seaborn as sns, pandas as pd, numpy as np, os
+          import json
+          import matplotlib.pyplot as plt
+          import seaborn as sns
+          import pandas as pd
+          import numpy as np
+          import os
+          
           os.makedirs('artifacts/plots', exist_ok=True)
           
           models = ['logistic_regression', 'random_forest', 'xgboost']
@@ -406,8 +412,18 @@ jobs:
           for model in models:
               try:
                   with open(f'artifacts/metrics/{model}_metrics.json', 'r') as f:
-                      metrics_data[model] = json.load(f)
-              except: pass
+                      data = json.load(f)
+                      # Extract only scalar metrics, not lists
+                      metrics_data[model] = {
+                          'accuracy': data.get('accuracy', 0),
+                          'precision': data.get('precision', 0),
+                          'recall': data.get('recall', 0),
+                          'f1_score': data.get('f1_score', 0)
+                      }
+                      if 'roc_auc' in data:
+                          metrics_data[model]['roc_auc'] = data['roc_auc']
+              except Exception as e:
+                  print(f'Could not load {model}: {e}')
           
           if metrics_data:
               fig, axes = plt.subplots(2, 2, figsize=(12, 10))
@@ -415,23 +431,43 @@ jobs:
               
               for idx, metric in enumerate(metrics_names):
                   ax = axes[idx//2, idx%2]
-                  values = [metrics_data[m].get(metric, 0) for m in models if m in metrics_data]
-                  ax.bar([m for m in models if m in metrics_data], values)
+                  model_names = list(metrics_data.keys())
+                  values = [metrics_data[m].get(metric, 0) for m in model_names]
+                  bars = ax.bar(model_names, values)
                   ax.set_title(f'{metric.upper()} Comparison')
                   ax.set_ylim([0, 1])
+                  ax.set_ylabel('Score')
                   ax.tick_params(axis='x', rotation=45)
+                  for bar, val in zip(bars, values):
+                      ax.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.01, 
+                             f'{val:.3f}', ha='center', va='bottom', fontsize=9)
               
               plt.tight_layout()
               plt.savefig('artifacts/plots/model_comparison.png', dpi=100, bbox_inches='tight')
               plt.close()
               
-              metrics_df = pd.DataFrame(metrics_data).T
+              heatmap_data = []
+              for model in model_names:
+                  row = []
+                  for metric in metrics_names:
+                      row.append(metrics_data[model].get(metric, 0))
+                  heatmap_data.append(row)
+              
+              df_heatmap = pd.DataFrame(heatmap_data, index=model_names, columns=metrics_names)
+              
               plt.figure(figsize=(10, 6))
-              sns.heatmap(metrics_df, annot=True, cmap='YlOrRd', fmt='.3f')
+              sns.heatmap(df_heatmap, annot=True, cmap='YlOrRd', fmt='.3f', cbar_kws={'label': 'Score'})
               plt.title('Model Performance Heatmap')
               plt.tight_layout()
               plt.savefig('artifacts/plots/performance_heatmap.png', dpi=100)
               plt.close()
+              
+              df_table = pd.DataFrame(metrics_data).T
+              df_table.to_csv('artifacts/reports/metrics_summary.csv')
+              
+              print('Reports and plots generated successfully!')
+          else:
+              print('No metrics data found to generate plots')
           "
       
       - name: Upload reports and plots
