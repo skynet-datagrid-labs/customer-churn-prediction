@@ -3,16 +3,16 @@ name: Model Retraining
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 2 * * 0'  # Weekly retraining on Sunday at 2 AM
+    - cron: '0 2 * * 0'
 
 jobs:
   retrain-pipeline:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
