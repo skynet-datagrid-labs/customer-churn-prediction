@@ -598,6 +598,20 @@ jobs:
           pip install pytest httpx
           pip install -r requirements.txt
       
+      - name: Wait for API to be ready
+        run: |
+          echo "Waiting for API to be ready..."
+          for i in {1..30}; do
+            if curl -s -f http://localhost:8000/health > /dev/null 2>&1; then
+              echo "API is ready!"
+              exit 0
+            fi
+            echo "Attempt $i: API not ready yet, waiting..."
+            sleep 2
+          done
+          echo "API failed to start within timeout"
+          exit 1
+      
       - name: Run API tests
         run: |
           pytest tests/test_api.py -v --tb=short
