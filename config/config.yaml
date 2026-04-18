@@ -1,88 +1,17 @@
-# ML Pipeline Configuration
+# ML Company Pipeline Configuration
+project:
+  name: "Customer Churn Prediction"
+  version: "1.0.0"
+  environment: "production"
 
 data:
-  raw_data_path: "data/fictitious_company_data.xlsx"
-  processed_data_path: "artifacts/data/"
-  validation_rules:
-    age:
-      min: 18
-      max: 100
-      required: true
-      dtype: int
-    tenure_months:
-      min: 0
-      max: 120
-      required: true
-      dtype: int
-    monthly_spend:
-      min: 0
-      max: 1000
-      required: true
-      dtype: float
-    support_tickets:
-      min: 0
-      max: 50
-      required: true
-      dtype: int
-    last_login_days:
-      min: 0
-      max: 365
-      required: true
-      dtype: int
-    satisfaction_score:
-      min: 1
-      max: 10
-      required: true
-      dtype: int
-    gender:
-      allowed_values: ["Male", "Female"]
-      required: true
-      dtype: object
-    contract_type:
-      allowed_values: ["Monthly", "Yearly"]
-      required: true
-      dtype: object
-    churn:
-      allowed_values: [0, 1]
-      required: true
-      dtype: int
-
-models:
-  logistic_regression:
-    enabled: true
-    params:
-      C: [0.1, 1.0, 10.0]
-      max_iter: 1000
-      random_state: 42
-      class_weight: "balanced"
-  
-  random_forest:
-    enabled: true
-    params:
-      n_estimators: [100, 200]
-      max_depth: [10, 20, null]
-      min_samples_split: [2, 5, 10]
-      random_state: 42
-      class_weight: "balanced"
-  
-  xgboost:
-    enabled: true
-    params:
-      n_estimators: [100, 200]
-      max_depth: [3, 6, 9]
-      learning_rate: [0.01, 0.1, 0.3]
-      random_state: 42
-      scale_pos_weight: null  # Will be calculated automatically
-
-training:
+  source_file: "data/fictitious_company_data.xlsx"
+  target_column: "churn"
   test_size: 0.2
-  validation_size: 0.1
   random_state: 42
-  cv_folds: 5
-  scoring_metric: "f1"
-
+  
 features:
-  numerical:
+  numerical_features:
     - age
     - tenure_months
     - monthly_spend
@@ -90,31 +19,57 @@ features:
     - last_login_days
     - satisfaction_score
   
-  categorical:
+  categorical_features:
     - gender
     - contract_type
   
-  target: churn
-  drop_columns:
+  id_columns:
     - customer_id
 
-monitoring:
-  drift_threshold: 0.2
-  performance_threshold: 0.75
-  alert_channels:
-    - github_actions
-    - logs
+models:
+  logistic_regression:
+    class: "LogisticRegression"
+    params:
+      C: 1.0
+      max_iter: 1000
+      random_state: 42
+  
+  random_forest:
+    class: "RandomForestClassifier"
+    params:
+      n_estimators: 100
+      max_depth: 10
+      random_state: 42
+  
+  xgboost:
+    class: "XGBClassifier"
+    params:
+      n_estimators: 100
+      max_depth: 6
+      learning_rate: 0.1
+      random_state: 42
 
+evaluation:
+  metrics:
+    - accuracy
+    - precision
+    - recall
+    - f1_score
+  cv_folds: 5
+  
+drift_detection:
+  psi_threshold: 0.1
+  ks_threshold: 0.05
+  reference_window_days: 30
+  current_window_days: 7
+  
 api:
   host: "0.0.0.0"
   port: 8000
-  workers: 4
-  rate_limit: "100/minute"
-  timeout: 30
-  model_path: "artifacts/models/best_model.pkl"
-  preprocessor_path: "artifacts/models/preprocessor.pkl"
-
-deployment:
-  docker_registry: "ghcr.io"
-  image_name: "ml-api"
-  environment: "production"
+  workers: 2
+  
+artifacts:
+  model_path: "artifacts/models/"
+  report_path: "artifacts/reports/"
+  metrics_path: "artifacts/metrics/"
+  plots_path: "artifacts/plots/"
