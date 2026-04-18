@@ -358,6 +358,25 @@ jobs:
           name: best-model-info
           path: artifacts/models/
       
+      - name: Download preprocessed data (for preprocessor)
+        uses: actions/download-artifact@v4
+        with:
+          name: preprocessed-data
+          path: artifacts/data/
+      
+      - name: Download engineered features (for feature columns)
+        uses: actions/download-artifact@v4
+        with:
+          name: engineered-features
+          path: artifacts/data/
+      
+      - name: Debug - Check downloaded files
+        run: |
+          echo "=== artifacts/models/ ==="
+          ls -la artifacts/models/ || echo "No models"
+          echo "=== artifacts/data/ ==="
+          ls -la artifacts/data/ || echo "No data"
+      
       - name: Save final artifacts
         run: python src/save_model.py
       
