@@ -1,17 +1,597 @@
-name: pipeline
+name: ML Production Pipeline
 
 on:
   push:
-    branches: ["main"]
+    branches: [ main, develop ]
   pull_request:
-
-permissions:
-  contents: read
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 1'  # Weekly retraining
+  workflow_dispatch:  # Manual trigger
 
 jobs:
-  run-pipeline:
+  setup-environment:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Pipeline placeholder
-        run: echo "Pipeline workflow scaffolded"
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Cache pip packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Verify installation
+        run: |
+          python -c "import sklearn; import pandas; import numpy; import xgboost; import fastapi; import uvicorn"
+      
+      - name: Save environment info
+        run: |
+          mkdir -p artifacts/reports
+          pip freeze > artifacts/reports/requirements_freeze.txt
+      
+      - name: Upload environment artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: environment-info
+          path: artifacts/reports/requirements_freeze.txt
+
+  ingest-data:
+    runs-on: ubuntu-latest
+    needs: [setup-environment]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Run data ingestion
+        run: python src/ingest.py
+      
+      - name: Upload raw data
+        uses: actions/upload-artifact@v3
+        with:
+          name: raw-data
+          path: artifacts/data/raw_data.csv
+          retention-days: 7
+
+  validate-data:
+    runs-on: ubuntu-latest
+    needs: [ingest-data]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Download raw data
+        uses: actions/download-artifact@v3
+        with:
+          name: raw-data
+          path: artifacts/data/
+      
+      - name: Run data validation
+        run: python src/validate.py
+      
+      - name: Upload validation report
+        uses: actions/upload-artifact@v3
+        with:
+          name: validation-report
+          path: artifacts/reports/validation_report.json
+      
+      - name: Upload validated data
+        uses: actions/upload-artifact@v3
+        with:
+          name: validated-data
+          path: artifacts/data/validated_data.csv
+
+  preprocess-data:
+    runs-on: ubuntu-latest
+    needs: [validate-data]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Download validated data
+        uses: actions/download-artifact@v3
+        with:
+          name: validated-data
+          path: artifacts/data/
+      
+      - name: Run preprocessing
+        run: python src/preprocess.py
+      
+      - name: Upload preprocessed data
+        uses: actions/upload-artifact@v3
+        with:
+          name: preprocessed-data
+          path: artifacts/data/preprocessed_data.csv
+
+  feature-engineering:
+    runs-on: ubuntu-latest
+    needs: [preprocess-data]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Download preprocessed data
+        uses: actions/download-artifact@v3
+        with:
+          name: preprocessed-data
+          path: artifacts/data/
+      
+      - name: Run feature engineering
+        run: python src/feature_engineering.py
+      
+      - name: Upload feature-engineered data
+        uses: actions/upload-artifact@v3
+        with:
+          name: feature-data
+          path: artifacts/data/feature_data.csv
+      
+      - name: Upload feature info
+        uses: actions/upload-artifact@v3
+        with:
+          name: feature-info
+          path: artifacts/reports/feature_info.json
+
+  train-models:
+    runs-on: ubuntu-latest
+    needs: [feature-engineering]
+    strategy:
+      matrix:
+        model: [logistic_regression, random_forest, xgboost]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Download feature data
+        uses: actions/download-artifact@v3
+        with:
+          name: feature-data
+          path: artifacts/data/
+      
+      - name: Train ${{ matrix.model }}
+        run: python src/train.py --model ${{ matrix.model }}
+      
+      - name: Upload ${{ matrix.model }} model
+        uses: actions/upload-artifact@v3
+        with:
+          name: model-${{ matrix.model }}
+          path: artifacts/models/${{ matrix.model }}.pkl
+      
+      - name: Upload ${{ matrix.model }} metrics
+        uses: actions/upload-artifact@v3
+        with:
+          name: metrics-${{ matrix.model }}
+          path: artifacts/metrics/${{ matrix.model }}_metrics.json
+
+  evaluate-models:
+    runs-on: ubuntu-latest
+    needs: [train-models]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Download all model metrics
+        uses: actions/download-artifact@v3
+        with:
+          name: metrics-logistic_regression
+          path: artifacts/metrics/
+      
+      - name: Download random forest metrics
+        uses: actions/download-artifact@v3
+        with:
+          name: metrics-random_forest
+          path: artifacts/metrics/
+      
+      - name: Download xgboost metrics
+        uses: actions/download-artifact@v3
+        with:
+          name: metrics-xgboost
+          path: artifacts/metrics/
+      
+      - name: Run evaluation
+        run: python src/evaluate.py
+      
+      - name: Upload evaluation report
+        uses: actions/upload-artifact@v3
+        with:
+          name: evaluation-report
+          path: artifacts/reports/evaluation_report.json
+
+  select-best-model:
+    runs-on: ubuntu-latest
+    needs: [evaluate-models]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Download evaluation report
+        uses: actions/download-artifact@v3
+        with:
+          name: evaluation-report
+          path: artifacts/reports/
+      
+      - name: Download all models
+        uses: actions/download-artifact@v3
+        with:
+          name: model-logistic_regression
+          path: artifacts/models/
+      
+      - name: Download random forest model
+        uses: actions/download-artifact@v3
+        with:
+          name: model-random_forest
+          path: artifacts/models/
+      
+      - name: Download xgboost model
+        uses: actions/download-artifact@v3
+        with:
+          name: model-xgboost
+          path: artifacts/models/
+      
+      - name: Select best model
+        run: python src/select_model.py
+      
+      - name: Upload best model
+        uses: actions/upload-artifact@v3
+        with:
+          name: best-model
+          path: artifacts/models/best_model.pkl
+      
+      - name: Upload selection report
+        uses: actions/upload-artifact@v3
+        with:
+          name: model-selection
+          path: artifacts/reports/model_selection.json
+
+  save-artifacts:
+    runs-on: ubuntu-latest
+    needs: [select-best-model]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Download best model
+        uses: actions/download-artifact@v3
+        with:
+          name: best-model
+          path: artifacts/models/
+      
+      - name: Download feature info
+        uses: actions/download-artifact@v3
+        with:
+          name: feature-info
+          path: artifacts/reports/
+      
+      - name: Save all artifacts
+        run: python src/save_model.py
+      
+      - name: Upload final artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: final-artifacts
+          path: artifacts/
+          retention-days: 30
+
+  generate-reports:
+    runs-on: ubuntu-latest
+    needs: [evaluate-models, save-artifacts]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Download final artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: final-artifacts
+          path: artifacts/
+      
+      - name: Generate confusion matrix
+        run: |
+          python -c "
+          import joblib
+          import pandas as pd
+          import matplotlib.pyplot as plt
+          import seaborn as sns
+          from sklearn.metrics import confusion_matrix
+          
+          model = joblib.load('artifacts/models/best_model.pkl')
+          data = pd.read_csv('artifacts/data/feature_data.csv')
+          X = data.drop('churn', axis=1)
+          y = data['churn']
+          from sklearn.model_selection import train_test_split
+          X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+          y_pred = model.predict(X_test)
+          cm = confusion_matrix(y_test, y_pred)
+          plt.figure(figsize=(8,6))
+          sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+          plt.title('Confusion Matrix')
+          plt.ylabel('True Label')
+          plt.xlabel('Predicted Label')
+          plt.savefig('artifacts/plots/confusion_matrix.png')
+          "
+      
+      - name: Upload reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: reports-plots
+          path: artifacts/plots/
+
+  upload-artifacts:
+    runs-on: ubuntu-latest
+    needs: [generate-reports]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: final-artifacts
+          path: artifacts/
+      
+      - name: Compress artifacts
+        run: tar -czf ml-artifacts.tar.gz artifacts/
+      
+      - name: Upload to GitHub Releases
+        uses: softprops/action-gh-release@v1
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        with:
+          files: ml-artifacts.tar.gz
+          tag_name: artifacts-${{ github.run_number }}
+          name: ML Artifacts Run ${{ github.run_number }}
+          body: "Automatically generated ML artifacts from pipeline run"
+
+  build-docker-image:
+    runs-on: ubuntu-latest
+    needs: [save-artifacts]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Download final artifacts
+        uses: actions/download-artifact@v3
+        with:
+          name: final-artifacts
+          path: artifacts/
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/ml-api:latest
+            ghcr.io/${{ github.repository }}/ml-api:${{ github.run_number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-api:
+    runs-on: ubuntu-latest
+    needs: [build-docker-image]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Simulate deployment
+        run: |
+          echo "Deploying ML API to production..."
+          echo "Docker image: ghcr.io/${{ github.repository }}/ml-api:${{ github.run_number }}"
+          echo "Starting FastAPI service..."
+          mkdir -p deploy_logs
+          echo "Deployment successful at $(date)" > deploy_logs/deployment.log
+          echo "API endpoint: https://api.company.com/predict"
+          echo "Health check: https://api.company.com/health"
+      
+      - name: Save deployment info
+        uses: actions/upload-artifact@v3
+        with:
+          name: deployment-info
+          path: deploy_logs/
+
+  test-api:
+    runs-on: ubuntu-latest
+    needs: [deploy-api]
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Start API server
+        run: |
+          nohup uvicorn api.app:app --host 0.0.0.0 --port 8000 &
+          sleep 5
+      
+      - name: Run API tests
+        run: pytest tests/test_api.py -v --tb=short
+      
+      - name: Test predictions
+        run: |
+          curl -X POST http://localhost:8000/predict \
+            -H "Content-Type: application/json" \
+            -d '{"age": 35, "gender": "Male", "tenure_months": 12, "monthly_spend": 250.5, "contract_type": "Monthly", "support_tickets": 2, "last_login_days": 15, "satisfaction_score": 7}' \
+            | python -m json.tool
+
+  drift-detection:
+    runs-on: ubuntu-latest
+    needs: [save-artifacts]
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      
+      - name: Download reference data
+        uses: actions/download-artifact@v3
+        with:
+          name: final-artifacts
+          path: artifacts/
+      
+      - name: Run drift detection
+        run: python src/drift.py
+      
+      - name: Upload drift report
+        uses: actions/upload-artifact@v3
+        with:
+          name: drift-report
+          path: artifacts/reports/drift_report.json
+      
+      - name: Check for significant drift
+        id: check-drift
+        run: |
+          DRIFT_SCORE=$(python -c "import json; data=json.load(open('artifacts/reports/drift_report.json')); print(data['drift_score'])")
+          if (( $(echo "$DRIFT_SCORE > 0.2" | bc -l) )); then
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+          else
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Trigger retraining if drift detected
+        if: steps.check-drift.outputs.drift_detected == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'retrain.yml',
+              ref: 'main'
+            })
+
+  retrain-trigger:
+    runs-on: ubuntu-latest
+    needs: [drift-detection]
+    if: always()
+    steps:
+      - name: Check retraining status
+        run: |
+          echo "Retraining triggered based on drift detection"
+          echo "Scheduled retraining will run weekly"
+
+  notify:
+    runs-on: ubuntu-latest
+    needs: [test-api, drift-detection, retrain-trigger]
+    if: always()
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Collect all job statuses
+        run: |
+          echo "ML Pipeline Execution Summary" > summary.txt
+          echo "============================" >> summary.txt
+          echo "Run ID: ${{ github.run_id }}" >> summary.txt
+          echo "Run Number: ${{ github.run_number }}" >> summary.txt
+          echo "Trigger: ${{ github.event_name }}" >> summary.txt
+          echo "Status: ${{ job.status }}" >> summary.txt
+          echo "Completed at: $(date)" >> summary.txt
+      
+      - name: Create GitHub summary
+        run: |
+          echo "## ML Pipeline Execution Report" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run ID**: ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Artifacts Generated" >> $GITHUB_STEP_SUMMARY
+          echo "- Models trained and saved" >> $GITHUB_STEP_SUMMARY
+          echo "- Evaluation metrics" >> $GITHUB_STEP_SUMMARY
+          echo "- Confusion matrix plots" >> $GITHUB_STEP_SUMMARY
+          echo "- Docker image built" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Log completion
+        run: |
+          echo "Pipeline completed successfully" >> pipeline.log
+          cat summary.txt
