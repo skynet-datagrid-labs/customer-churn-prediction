@@ -1,206 +1,338 @@
-"""Data validation module."""
+"""
+Data Validation Module
+Validates data quality, missing values, outliers, and business rules
+"""
 
-import sys
-import os
-import argparse
-import json
 import pandas as pd
 import numpy as np
+import json
+import os
+import sys
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from datetime import datetime
 import logging
-import yaml
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-
 class DataValidator:
-    """Validate dataset for quality and consistency."""
+    """Comprehensive data validation"""
     
-    def __init__(self, config_path: str = "config/config.yaml"):
-        self.config = self._load_config(config_path)
-        self.validation_rules = self.config.get('data', {}).get('validation_rules', {})
-    
-    def _load_config(self, config_path: str) -> Dict:
-        """Load configuration file."""
-        try:
-            with open(config_path, 'r') as f:
-                return yaml.safe_load(f)
-        except Exception as e:
-            logger.warning(f"Could not load config: {e}, using defaults")
-            return {}
-    
-    def validate(self, df: pd.DataFrame) -> Tuple[bool, Dict[str, Any]]:
-        """Validate dataframe against rules."""
-        logger.info("Starting data validation")
+    def __init__(self):
+        self.validation_rules = {
+            'age': {'min': 18, 'max': 100, 'dtype': 'int64'},
+            'tenure_months': {'min': 0, 'max': 120, 'dtype': 'int64'},
+            'monthly_spend': {'min': 0, 'max': 10000, 'dtype': 'float64'},
+            'support_tickets': {'min': 0, 'max': 50, 'dtype': 'int64'},
+            'last_login_days': {'min': 0, 'max': 365, 'dtype': 'int64'},
+            'satisfaction_score': {'min': 1, 'max': 10, 'dtype': 'int64'},
+            'gender': {'allowed_values': ['Male', 'Female']},
+            'contract_type': {'allowed_values': ['Monthly', 'Yearly']},
+            'churn': {'allowed_values': [0, 1], 'dtype': 'int64'}
+        }
+        self.validation_results = {}
         
-        validation_results = {
-            "valid": True,
-            "errors": [],
-            "warnings": [],
-            "stats": {},
-            "missing_values": {},
-            "duplicates": 0
+    def load_data(self, data_path: str = "artifacts/data/ingested_data.parquet") -> pd.DataFrame:
+        """Load ingested data"""
+        try:
+            logger.info(f"Loading data from {data_path}")
+            self.data = pd.read_parquet(data_path)
+            logger.info(f"Loaded {len(self.data)} rows")
+            return self.data
+        except Exception as e:
+            logger.error(f"Error loading data: {str(e)}")
+            raise
+    
+    def check_missing_values(self) -> dict:
+        """Check for missing values in all columns"""
+        missing_counts = self.data.isnull().sum()
+        missing_percentages = (missing_counts / len(self.data)) * 100
+        
+        result = {
+            'total_missing': int(missing_counts.sum()),
+            'columns_with_missing': missing_counts[missing_counts > 0].to_dict(),
+            'missing_percentages': missing_percentages[missing_percentages > 0].to_dict(),
+            'has_missing': missing_counts.sum() > 0
         }
         
-        # Check for missing values
-        missing_counts = df.isnull().sum()
-        missing_cols = missing_counts[missing_counts > 0]
-        validation_results["missing_values"] = missing_counts.to_dict()
-        
-        if len(missing_cols) > 0:
-            validation_results["warnings"].append(
-                f"Missing values found in columns: {missing_cols.index.tolist()}"
-            )
-        
-        # Check for duplicates
-        duplicates = df.duplicated().sum()
-        validation_results["duplicates"] = int(duplicates)
-        if duplicates > 0:
-            validation_results["warnings"].append(f"Found {duplicates} duplicate rows")
-        
-        # Validate each column
-        for column, rules in self.validation_rules.items():
-            if column not in df.columns:
-                validation_results["errors"].append(f"Required column '{column}' missing")
-                validation_results["valid"] = False
-                continue
-            
-            # Required check
-            if rules.get('required', False) and df[column].isnull().all():
-                validation_results["errors"].append(f"Column '{column}' has all null values")
-                validation_results["valid"] = False
-            
-            # Numeric range validation
-            if 'min' in rules and pd.api.types.is_numeric_dtype(df[column]):
-                invalid_min = df[column] < rules['min']
-                if invalid_min.any():
-                    validation_results["warnings"].append(
-                        f"Column '{column}' has {invalid_min.sum()} values below {rules['min']}"
-                    )
-            
-            if 'max' in rules and pd.api.types.is_numeric_dtype(df[column]):
-                invalid_max = df[column] > rules['max']
-                if invalid_max.any():
-                    validation_results["warnings"].append(
-                        f"Column '{column}' has {invalid_max.sum()} values above {rules['max']}"
-                    )
-            
-            # Categorical validation
-            if 'allowed_values' in rules:
-                invalid_cats = ~df[column].isin(rules['allowed_values'])
-                if invalid_cats.any() and not df[column].isnull().any():
-                    invalid_values = df[column][invalid_cats].unique().tolist()
-                    validation_results["warnings"].append(
-                        f"Column '{column}' has invalid values: {invalid_values}"
-                    )
-            
-            # Calculate statistics
-            if pd.api.types.is_numeric_dtype(df[column]):
-                validation_results["stats"][column] = {
-                    "mean": float(df[column].mean()),
-                    "std": float(df[column].std()),
-                    "min": float(df[column].min()),
-                    "max": float(df[column].max()),
-                    "null_count": int(df[column].isnull().sum()),
-                    "unique_count": int(df[column].nunique())
-                }
-            else:
-                validation_results["stats"][column] = {
-                    "null_count": int(df[column].isnull().sum()),
-                    "unique_count": int(df[column].nunique()),
-                    "top_values": df[column].value_counts().head(3).to_dict()
-                }
-        
-        # Check target column
-        target = 'churn'
-        if target in df.columns:
-            target_dist = df[target].value_counts(normalize=True).to_dict()
-            validation_results["stats"]["target_distribution"] = target_dist
-            logger.info(f"Target distribution: {target_dist}")
-            
-            if 0 not in target_dist or 1 not in target_dist:
-                validation_results["errors"].append("Target column missing one of the classes")
-                validation_results["valid"] = False
-        
-        # Log results
-        if validation_results["valid"]:
-            logger.info("Data validation passed")
-        else:
-            logger.error(f"Data validation failed: {validation_results['errors']}")
-        
-        for warning in validation_results["warnings"]:
-            logger.warning(warning)
-        
-        return validation_results["valid"], validation_results
+        logger.info(f"Missing values check: {result['total_missing']} total missing values")
+        return result
     
-    def handle_missing_values(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Handle missing values based on column type."""
-        logger.info("Handling missing values")
+    def check_duplicates(self) -> dict:
+        """Check for duplicate rows"""
+        duplicate_count = self.data.duplicated().sum()
         
-        for column in df.columns:
-            if df[column].isnull().any():
-                if pd.api.types.is_numeric_dtype(df[column]):
-                    median_val = df[column].median()
-                    df[column].fillna(median_val, inplace=True)
-                    logger.info(f"Filled missing in '{column}' with median: {median_val}")
-                else:
-                    mode_val = df[column].mode()
-                    if len(mode_val) > 0:
-                        df[column].fillna(mode_val[0], inplace=True)
-                        logger.info(f"Filled missing in '{column}' with mode: {mode_val[0]}")
-                    else:
-                        df[column].fillna("Unknown", inplace=True)
+        # Check duplicate customer_ids
+        customer_id_duplicates = self.data['customer_id'].duplicated().sum()
         
-        return df
-
+        result = {
+            'duplicate_rows': int(duplicate_count),
+            'duplicate_customer_ids': int(customer_id_duplicates),
+            'has_duplicates': duplicate_count > 0 or customer_id_duplicates > 0
+        }
+        
+        logger.info(f"Duplicates check: {duplicate_count} duplicate rows, {customer_id_duplicates} duplicate customer IDs")
+        return result
+    
+    def check_outliers(self) -> dict:
+        """Detect outliers using IQR method"""
+        outliers = {}
+        numerical_cols = ['age', 'tenure_months', 'monthly_spend', 'support_tickets', 
+                         'last_login_days', 'satisfaction_score']
+        
+        for col in numerical_cols:
+            if col in self.data.columns:
+                Q1 = self.data[col].quantile(0.25)
+                Q3 = self.data[col].quantile(0.75)
+                IQR = Q3 - Q1
+                lower_bound = Q1 - 1.5 * IQR
+                upper_bound = Q3 + 1.5 * IQR
+                
+                outliers_count = ((self.data[col] < lower_bound) | (self.data[col] > upper_bound)).sum()
+                outliers_percentage = (outliers_count / len(self.data)) * 100
+                
+                outliers[col] = {
+                    'count': int(outliers_count),
+                    'percentage': float(outliers_percentage),
+                    'lower_bound': float(lower_bound),
+                    'upper_bound': float(upper_bound),
+                    'Q1': float(Q1),
+                    'Q3': float(Q3),
+                    'IQR': float(IQR)
+                }
+        
+        logger.info(f"Outlier detection completed for {len(outliers)} columns")
+        return outliers
+    
+    def check_data_types(self) -> dict:
+        """Validate data types"""
+        type_validation = {}
+        
+        for col, rules in self.validation_rules.items():
+            if col in self.data.columns:
+                expected_type = rules.get('dtype')
+                actual_type = str(self.data[col].dtype)
+                
+                type_validation[col] = {
+                    'expected': expected_type,
+                    'actual': actual_type,
+                    'is_correct': expected_type in actual_type if expected_type else True
+                }
+        
+        return type_validation
+    
+    def check_value_ranges(self) -> dict:
+        """Validate value ranges for numerical columns"""
+        range_validation = {}
+        
+        for col, rules in self.validation_rules.items():
+            if col in self.data.columns and 'min' in rules and 'max' in rules:
+                min_val = self.data[col].min()
+                max_val = self.data[col].max()
+                
+                out_of_range = ((self.data[col] < rules['min']) | (self.data[col] > rules['max'])).sum()
+                
+                range_validation[col] = {
+                    'min_expected': rules['min'],
+                    'min_actual': float(min_val),
+                    'max_expected': rules['max'],
+                    'max_actual': float(max_val),
+                    'out_of_range_count': int(out_of_range),
+                    'is_valid': out_of_range == 0
+                }
+        
+        return range_validation
+    
+    def check_categorical_values(self) -> dict:
+        """Validate categorical values"""
+        categorical_validation = {}
+        categorical_cols = ['gender', 'contract_type']
+        
+        for col in categorical_cols:
+            if col in self.data.columns and col in self.validation_rules:
+                allowed = self.validation_rules[col]['allowed_values']
+                unique_values = self.data[col].unique().tolist()
+                invalid_values = [val for val in unique_values if val not in allowed]
+                
+                categorical_validation[col] = {
+                    'allowed_values': allowed,
+                    'unique_values': unique_values,
+                    'invalid_values': invalid_values,
+                    'is_valid': len(invalid_values) == 0
+                }
+        
+        # Check churn values
+        if 'churn' in self.data.columns:
+            allowed = [0, 1]
+            unique_values = self.data['churn'].unique().tolist()
+            invalid_values = [val for val in unique_values if val not in allowed]
+            
+            categorical_validation['churn'] = {
+                'allowed_values': allowed,
+                'unique_values': unique_values,
+                'invalid_values': invalid_values,
+                'is_valid': len(invalid_values) == 0,
+                'class_distribution': self.data['churn'].value_counts().to_dict()
+            }
+        
+        return categorical_validation
+    
+    def check_statistical_balance(self) -> dict:
+        """Check statistical balance of target variable"""
+        if 'churn' not in self.data.columns:
+            return {}
+        
+        churn_counts = self.data['churn'].value_counts()
+        churn_percentages = (churn_counts / len(self.data)) * 100
+        
+        result = {
+            'total_samples': len(self.data),
+            'churn_0_count': int(churn_counts.get(0, 0)),
+            'churn_1_count': int(churn_counts.get(1, 0)),
+            'churn_0_percentage': float(churn_percentages.get(0, 0)),
+            'churn_1_percentage': float(churn_percentages.get(1, 0)),
+            'is_balanced': 20 <= churn_percentages.get(1, 0) <= 80
+        }
+        
+        return result
+    
+    def run_full_validation(self) -> dict:
+        """Run all validation checks"""
+        logger.info("Starting comprehensive data validation")
+        
+        self.validation_results = {
+            'timestamp': datetime.now().isoformat(),
+            'total_rows': len(self.data),
+            'total_columns': len(self.data.columns),
+            'missing_values': self.check_missing_values(),
+            'duplicates': self.check_duplicates(),
+            'outliers': self.check_outliers(),
+            'data_types': self.check_data_types(),
+            'value_ranges': self.check_value_ranges(),
+            'categorical_values': self.check_categorical_values(),
+            'statistical_balance': self.check_statistical_balance()
+        }
+        
+        # Determine overall validation status
+        issues = []
+        
+        if self.validation_results['missing_values']['has_missing']:
+            issues.append("Missing values detected")
+        
+        if self.validation_results['duplicates']['has_duplicates']:
+            issues.append("Duplicate records detected")
+        
+        for col, validation in self.validation_results['value_ranges'].items():
+            if not validation['is_valid']:
+                issues.append(f"Out of range values in {col}")
+        
+        for col, validation in self.validation_results['categorical_values'].items():
+            if not validation['is_valid']:
+                issues.append(f"Invalid categorical values in {col}")
+        
+        self.validation_results['overall_status'] = {
+            'is_valid': len(issues) == 0,
+            'issues_count': len(issues),
+            'issues_list': issues,
+            'severity': 'HIGH' if len(issues) > 3 else 'MEDIUM' if len(issues) > 0 else 'LOW'
+        }
+        
+        logger.info(f"Validation complete. Status: {'PASSED' if self.validation_results['overall_status']['is_valid'] else 'FAILED'}")
+        if issues:
+            logger.warning(f"Issues found: {issues}")
+        
+        return self.validation_results
+    
+    def save_validation_report(self, output_path: str = "artifacts/reports/validation_report.json"):
+        """Save validation report"""
+        try:
+            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(output_path, 'w') as f:
+                json.dump(self.validation_results, f, indent=2)
+            
+            logger.info(f"Validation report saved to {output_path}")
+            
+            # Also save a human-readable summary
+            summary_path = output_path.replace('.json', '_summary.txt')
+            with open(summary_path, 'w') as f:
+                f.write("="*60 + "\n")
+                f.write("DATA VALIDATION REPORT\n")
+                f.write("="*60 + "\n\n")
+                
+                f.write(f"Validation Time: {self.validation_results['timestamp']}\n")
+                f.write(f"Total Rows: {self.validation_results['total_rows']}\n")
+                f.write(f"Total Columns: {self.validation_results['total_columns']}\n\n")
+                
+                f.write("MISSING VALUES:\n")
+                f.write(f"  Total Missing: {self.validation_results['missing_values']['total_missing']}\n")
+                f.write(f"  Has Missing: {self.validation_results['missing_values']['has_missing']}\n\n")
+                
+                f.write("DUPLICATES:\n")
+                f.write(f"  Duplicate Rows: {self.validation_results['duplicates']['duplicate_rows']}\n")
+                f.write(f"  Duplicate Customer IDs: {self.validation_results['duplicates']['duplicate_customer_ids']}\n\n")
+                
+                f.write("OVERALL STATUS:\n")
+                f.write(f"  Valid: {self.validation_results['overall_status']['is_valid']}\n")
+                f.write(f"  Issues Found: {self.validation_results['overall_status']['issues_count']}\n")
+                if self.validation_results['overall_status']['issues_list']:
+                    f.write("  Issues:\n")
+                    for issue in self.validation_results['overall_status']['issues_list']:
+                        f.write(f"    - {issue}\n")
+            
+            return output_path
+            
+        except Exception as e:
+            logger.error(f"Error saving validation report: {str(e)}")
+            raise
 
 def main():
-    """Main validation entry point."""
-    parser = argparse.ArgumentParser(description="Validate data")
-    parser.add_argument("--retraining", action="store_true", help="Running in retraining mode")
-    
-    args = parser.parse_args()
-    
-    # Load data
-    data_path = Path("artifacts/data/raw_data.csv")
-    if not data_path.exists():
-        logger.error(f"Raw data not found at {data_path}")
+    """Main execution"""
+    try:
+        logger.info("Starting data validation")
+        
+        validator = DataValidator()
+        validator.load_data()
+        
+        # Run validation
+        results = validator.run_full_validation()
+        
+        # Print summary
+        print("\n" + "="*60)
+        print("DATA VALIDATION SUMMARY")
+        print("="*60)
+        print(f"Total Rows: {results['total_rows']}")
+        print(f"Total Columns: {results['total_columns']}")
+        print(f"\nMissing Values: {results['missing_values']['total_missing']}")
+        print(f"Duplicate Rows: {results['duplicates']['duplicate_rows']}")
+        print(f"\nOverall Status: {'✅ PASSED' if results['overall_status']['is_valid'] else '❌ FAILED'}")
+        print(f"Severity: {results['overall_status']['severity']}")
+        
+        if results['overall_status']['issues_list']:
+            print("\nIssues Found:")
+            for issue in results['overall_status']['issues_list']:
+                print(f"  ⚠️ {issue}")
+        
+        # Print class distribution
+        if 'statistical_balance' in results:
+            sb = results['statistical_balance']
+            print(f"\nTarget Variable Distribution:")
+            print(f"  Churn=0: {sb['churn_0_count']} ({sb['churn_0_percentage']:.2f}%)")
+            print(f"  Churn=1: {sb['churn_1_count']} ({sb['churn_1_percentage']:.2f}%)")
+        
+        # Save report
+        validator.save_validation_report()
+        
+        # Exit with error if validation fails
+        if not results['overall_status']['is_valid']:
+            logger.error("Data validation failed")
+            sys.exit(1)
+        
+        print("\n✅ Data validation completed successfully!")
+        
+    except Exception as e:
+        logger.error(f"Data validation failed: {str(e)}")
         sys.exit(1)
-    
-    df = pd.read_csv(data_path)
-    logger.info(f"Loaded {len(df)} rows for validation")
-    
-    # Validate
-    validator = DataValidator()
-    is_valid, results = validator.validate(df)
-    
-    # Handle missing values
-    df_cleaned = validator.handle_missing_values(df)
-    
-    # Save validation report
-    report_path = Path("artifacts/reports/validation_report.json")
-    report_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    with open(report_path, 'w') as f:
-        json.dump(results, f, indent=2)
-    
-    # Save validated data
-    output_path = Path("artifacts/data/validated_data.csv")
-    df_cleaned.to_csv(output_path, index=False)
-    logger.info(f"Validated data saved to {output_path}")
-    
-    if not is_valid:
-        logger.error("Data validation failed with critical errors")
-        sys.exit(1)
-    
-    logger.info("Data validation completed successfully")
-
 
 if __name__ == "__main__":
     main()
