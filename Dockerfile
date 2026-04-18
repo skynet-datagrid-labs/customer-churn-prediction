@@ -1,11 +1,8 @@
-# Multi-stage build for production ML API
-
-# Stage 1: Build stage
-FROM python:3.9-slim as builder
+FROM python:3.9-slim
 
 WORKDIR /app
 
-# Install build dependencies
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
@@ -13,38 +10,23 @@ RUN apt-get update && apt-get install -y \
 
 # Copy requirements first for better caching
 COPY requirements.txt .
-
-# Install Python dependencies
-RUN pip install --no-cache-dir --user -r requirements.txt
-
-# Stage 2: Production stage
-FROM python:3.9-slim
-
-WORKDIR /app
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy Python dependencies from builder
-COPY --from=builder /root/.local /root/.local
-
-# Make sure scripts in .local are usable
-ENV PATH=/root/.local/bin:$PATH
+RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY . .
+COPY api/ ./api/
+COPY src/ ./src/
+COPY artifacts/models/ ./artifacts/models/
+COPY config/ ./config/
 
-# Create directories for artifacts
-RUN mkdir -p artifacts/models artifacts/data artifacts/reports artifacts/metrics artifacts/plots
+# Create necessary directories
+RUN mkdir -p artifacts/models artifacts/reports artifacts/metrics artifacts/plots
 
 # Expose port for API
 EXPOSE 8000
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD python -c "import requests; requests.get('http://localhost:8000/health')" || exit 1
 
-# Run the application
-CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4"]
+# Run the API server
+CMD ["uvicorn", "api.app:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
