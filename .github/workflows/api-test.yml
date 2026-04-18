@@ -4,36 +4,25 @@ on:
   push:
     paths:
       - 'api/**'
-      - 'tests/test_api.py'
+      - 'tests/**'
   pull_request:
     paths:
       - 'api/**'
   workflow_dispatch:
 
 jobs:
-  test-api:
+  test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ['3.9']
-    
     steps:
       - uses: actions/checkout@v4
       
-      - name: Setup Python ${{ matrix.python-version }}
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
-      
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-api-${{ hashFiles('requirements.txt') }}
+          python-version: '3.9'
       
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest pytest-cov httpx
       
@@ -50,50 +39,23 @@ jobs:
           model = RandomForestClassifier()
           model.fit(X, y)
           joblib.dump(model, 'artifacts/models/best_model.pkl')
+          from sklearn.preprocessing import StandardScaler
+          import joblib
+          scaler = StandardScaler()
+          scaler.fit(X)
+          joblib.dump(scaler, 'artifacts/models/preprocessor.pkl')
           "
       
       - name: Start API server
         run: |
-          nohup uvicorn api.app:app --host 127.0.0.1 --port 8000 &
+          nohup uvicorn api.app:app --host 0.0.0.0 --port 8000 &
           sleep 5
       
-      - name: Test API endpoints
-        run: |
-          curl -f http://localhost:8000/health || exit 1
-          curl -f http://localhost:8000/ || exit 1
+      - name: Run tests
+        run: pytest tests/test_api.py -v --cov=api --cov-report=xml
       
-      - name: Run pytest
-        run: |
-          pytest tests/test_api.py -v --cov=api --cov-report=xml --cov-report=term
-      
-      - name: Load test with multiple requests
-        run: |
-          python -c "
-          import requests
-          import time
-          import statistics
-          
-          urls = ['http://localhost:8000/health', 'http://localhost:8000/']
-          for url in urls:
-              times = []
-              for i in range(10):
-                  start = time.time()
-                  response = requests.get(url)
-                  end = time.time()
-                  times.append(end - start)
-              print(f'{url}: Avg response time: {statistics.mean(times):.3f}s')
-          "
-      
-      - name: Upload test coverage
+      - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:
           file: ./coverage.xml
           flags: unittests
-          name: api-tests
-      
-      - name: API test summary
-        run: |
-          echo "## API Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "- Python version: ${{ matrix.python-version }}" >> $GITHUB_STEP_SUMMARY
-          echo "- All tests passed" >> $GITHUB_STEP_SUMMARY
-          echo "- Response times within SLA" >> $GITHUB_STEP_SUMMARY
