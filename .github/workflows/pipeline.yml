@@ -210,7 +210,7 @@ print('Sample data created')
           else
             echo "⚠️ WARNING: feature_info.json not found, creating dummy"
             mkdir -p artifacts/reports
-            printf '{\n  "features": ["age", "gender", "tenure_months", "monthly_spend", "contract_type", "support_tickets", "last_login_days", "satisfaction_score"],\n  "target": "churn",\n  "n_features": 8,\n  "n_samples": 800,\n  "note": "Auto-generated dummy feature info"\n}' > artifacts/reports/feature_info.json
+            echo '{"features": ["age", "gender", "tenure_months", "monthly_spend", "contract_type", "support_tickets", "last_login_days", "satisfaction_score"], "target": "churn", "n_features": 8, "n_samples": 800, "note": "Auto-generated dummy feature info"}' > artifacts/reports/feature_info.json
             echo "✅ Dummy feature_info.json created"
           fi
       
@@ -319,7 +319,7 @@ print('Sample data created')
           if [ ! -f "artifacts/reports/evaluation_report.json" ]; then
             echo "Creating dummy evaluation report"
             mkdir -p artifacts/reports
-            printf '{\n  "comparison": {},\n  "best_model": "logistic_regression",\n  "best_model_metrics": {\n    "accuracy": 0.75,\n    "precision": 0.74,\n    "recall": 0.73,\n    "f1_score": 0.735,\n    "confusion_matrix": [[500, 100], [80, 320]]\n  }\n}' > artifacts/reports/evaluation_report.json
+            echo '{"comparison": {}, "best_model": "logistic_regression", "best_model_metrics": {"accuracy": 0.75, "precision": 0.74, "recall": 0.73, "f1_score": 0.735, "confusion_matrix": [[500, 100], [80, 320]]}}' > artifacts/reports/evaluation_report.json
             echo "✅ Dummy evaluation report created"
           fi
       
@@ -481,7 +481,7 @@ print('✅ Dummy model created')
           if [ ! -f "artifacts/reports/feature_info.json" ]; then
             echo "Creating dummy feature info"
             mkdir -p artifacts/reports
-            printf '{\n  "features": ["age", "gender", "tenure_months", "monthly_spend", "contract_type", "support_tickets", "last_login_days", "satisfaction_score"],\n  "target": "churn",\n  "n_features": 8,\n  "n_samples": 800,\n  "note": "Auto-generated dummy feature info"\n}' > artifacts/reports/feature_info.json
+            echo '{"features": ["age", "gender", "tenure_months", "monthly_spend", "contract_type", "support_tickets", "last_login_days", "satisfaction_score"], "target": "churn", "n_features": 8, "n_samples": 800, "note": "Auto-generated dummy feature info"}' > artifacts/reports/feature_info.json
             echo "✅ Dummy feature info created"
           fi
       
@@ -726,7 +726,7 @@ print('✅ Dummy model created for Docker')
       - name: Simulate API deployment
         run: |
           mkdir -p deployment
-          printf '{\n  "deployment_id": "${{ github.run_id }}",\n  "timestamp": "'$(date -Iseconds)'",\n  "image": "ghcr.io/${{ github.repository }}/ml-api:${{ github.run_number }}",\n  "status": "deployed",\n  "endpoints": {\n    "health": "/health",\n    "predict": "/predict",\n    "docs": "/docs"\n  }\n}' > deployment/deployment_info.json
+          echo '{"deployment_id": "${{ github.run_id }}", "timestamp": "'$(date -Iseconds)'", "image": "ghcr.io/${{ github.repository }}/ml-api:${{ github.run_number }}", "status": "deployed", "endpoints": {"health": "/health", "predict": "/predict", "docs": "/docs"}}' > deployment/deployment_info.json
           echo "✅ API deployment simulation complete"
       
       - name: Upload deployment info
@@ -916,7 +916,41 @@ print('✅ Dummy data created')
       
       - name: Create notification summary
         run: |
-          printf '# ML Pipeline Execution Report\n\n## Overview\n- **Run ID**: ${{ github.run_id }}\n- **Run Number**: ${{ github.run_number }}\n- **Trigger**: ${{ github.event_name }}\n- **Status**: ${{ job.status }}\n- **Timestamp**: $(date)\n\n## Jobs Executed\n- ✅ Setup Environment\n- ✅ Data Ingestion\n- ✅ Data Validation\n- ✅ Preprocessing\n- ✅ Feature Engineering\n- ✅ Model Training (3 models)\n- ✅ Model Evaluation\n- ✅ Best Model Selection\n- ✅ Artifact Saving\n- ✅ Report Generation\n- ✅ Docker Build\n- ✅ API Deployment\n- ✅ API Testing\n- ✅ Drift Detection\n\n## Artifacts\n- Models saved to: `artifacts/models/`\n- Metrics saved to: `artifacts/metrics/`\n- Reports saved to: `artifacts/reports/`\n- Plots saved to: `artifacts/plots/`\n\n## Next Steps\n- Monitor API performance\n- Review drift detection results\n- Schedule regular retraining as needed\n' > notification.md
+          echo '# ML Pipeline Execution Report' > notification.md
+          echo '' >> notification.md
+          echo '## Overview' >> notification.md
+          echo '- **Run ID**: ${{ github.run_id }}' >> notification.md
+          echo '- **Run Number**: ${{ github.run_number }}' >> notification.md
+          echo '- **Trigger**: ${{ github.event_name }}' >> notification.md
+          echo '- **Status**: ${{ job.status }}' >> notification.md
+          echo '- **Timestamp**: '$(date) >> notification.md
+          echo '' >> notification.md
+          echo '## Jobs Executed' >> notification.md
+          echo '- ✅ Setup Environment' >> notification.md
+          echo '- ✅ Data Ingestion' >> notification.md
+          echo '- ✅ Data Validation' >> notification.md
+          echo '- ✅ Preprocessing' >> notification.md
+          echo '- ✅ Feature Engineering' >> notification.md
+          echo '- ✅ Model Training (3 models)' >> notification.md
+          echo '- ✅ Model Evaluation' >> notification.md
+          echo '- ✅ Best Model Selection' >> notification.md
+          echo '- ✅ Artifact Saving' >> notification.md
+          echo '- ✅ Report Generation' >> notification.md
+          echo '- ✅ Docker Build' >> notification.md
+          echo '- ✅ API Deployment' >> notification.md
+          echo '- ✅ API Testing' >> notification.md
+          echo '- ✅ Drift Detection' >> notification.md
+          echo '' >> notification.md
+          echo '## Artifacts' >> notification.md
+          echo '- Models saved to: `artifacts/models/`' >> notification.md
+          echo '- Metrics saved to: `artifacts/metrics/`' >> notification.md
+          echo '- Reports saved to: `artifacts/reports/`' >> notification.md
+          echo '- Plots saved to: `artifacts/plots/`' >> notification.md
+          echo '' >> notification.md
+          echo '## Next Steps' >> notification.md
+          echo '- Monitor API performance' >> notification.md
+          echo '- Review drift detection results' >> notification.md
+          echo '- Schedule regular retraining as needed' >> notification.md
           
           cat notification.md >> $GITHUB_STEP_SUMMARY
       
