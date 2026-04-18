@@ -1,0 +1,17 @@
+name: drift-detection
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  detect-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Drift detection placeholder
+        run: echo "Drift detection workflow scaffolded"
