@@ -26,6 +26,9 @@ class ModelSelector:
         """Load evaluation results"""
         logger.info(f"Loading evaluation report from {report_path}")
         
+        if not os.path.exists(report_path):
+            raise FileNotFoundError(f"Evaluation report not found at {report_path}")
+        
         with open(report_path, 'r') as f:
             self.report = json.load(f)
         
@@ -68,43 +71,102 @@ class ModelSelector:
         return selection_report
     
     def load_best_model(self, models_path: str = "artifacts/models/"):
-        """Load the best model from disk"""
-        model_file = os.path.join(models_path, f"{self.best_model_name}.pkl")
+        """Load the best model from disk with better error handling"""
         
-        if not os.path.exists(model_file):
-            raise FileNotFoundError(f"Model file not found: {model_file}")
+        # Debug: List what's in the models directory
+        logger.info(f"Looking for models in: {models_path}")
         
-        with open(model_file, 'rb') as f:
-            self.best_model = pickle.load(f)
+        if not os.path.exists(models_path):
+            logger.error(f"Models directory does not exist: {models_path}")
+            # Try to find models in current directory
+            alt_paths = ["./artifacts/models/", "../artifacts/models/", "artifacts/models/"]
+            for alt in alt_paths:
+                if os.path.exists(alt):
+                    models_path = alt
+                    logger.info(f"Found models at alternative path: {models_path}")
+                    break
+            else:
+                raise FileNotFoundError(f"Models directory not found. Tried: {models_path} and alternatives")
         
-        logger.info(f"Loaded best model from {model_file}")
-        return self.best_model
+        # List all files in the directory
+        try:
+            files = os.listdir(models_path)
+            logger.info(f"Files in {models_path}: {files}")
+        except Exception as e:
+            logger.error(f"Could not list directory: {e}")
+            files = []
+        
+        # Try different possible model file names
+        possible_names = [
+            f"{self.best_model_name}.pkl",
+            f"{self.best_model_name}.pkl",
+            f"model-{self.best_model_name}.pkl",
+            f"{self.best_model_name}_model.pkl",
+            "final_model.pkl"  # Fallback
+        ]
+        
+        model_file = None
+        for name in possible_names:
+            test_path = os.path.join(models_path, name)
+            if os.path.exists(test_path):
+                model_file = test_path
+                logger.info(f"Found model file: {model_file}")
+                break
+        
+        if not model_file:
+            # Try to find any .pkl file
+            pkl_files = [f for f in files if f.endswith('.pkl')]
+            if pkl_files:
+                model_file = os.path.join(models_path, pkl_files[0])
+                logger.info(f"Using first available .pkl file: {model_file}")
+            else:
+                raise FileNotFoundError(
+                    f"No model file found for {self.best_model_name}. "
+                    f"Directory contents: {files}"
+                )
+        
+        try:
+            with open(model_file, 'rb') as f:
+                self.best_model = pickle.load(f)
+            logger.info(f"Successfully loaded best model from {model_file}")
+            return self.best_model
+        except Exception as e:
+            logger.error(f"Error loading model from {model_file}: {str(e)}")
+            raise
     
     def save_best_model_info(self, output_path: str = "artifacts/models/best_model_info.json"):
         """Save information about the best model"""
         try:
             Path(output_path).parent.mkdir(parents=True, exist_ok=True)
             
+            # Custom JSON encoder for numpy types
+            class NumpyEncoder(json.JSONEncoder):
+                def default(self, obj):
+                    if hasattr(obj, 'tolist'):
+                        return obj.tolist()
+                    return super(NumpyEncoder, self).default(obj)
+            
             best_info = {
                 'best_model': self.best_model_name,
                 'metrics': self.best_metrics,
                 'selection_time': __import__('datetime').datetime.now().isoformat(),
-                'model_parameters': self.best_model.get_params() if self.best_model else None
+                'model_type': type(self.best_model).__name__ if self.best_model else None,
+                'model_parameters': str(self.best_model.get_params())[:500] if self.best_model else None
             }
             
             with open(output_path, 'w') as f:
-                json.dump(best_info, f, indent=2)
+                json.dump(best_info, f, indent=2, cls=NumpyEncoder)
             
             logger.info(f"Best model info saved to {output_path}")
             
-            # Also create a simple text file with the best model name for easy reading
+            # Also create a simple text file
             txt_path = output_path.replace('.json', '.txt')
             with open(txt_path, 'w') as f:
                 f.write(f"Best Model: {self.best_model_name}\n")
-                f.write(f"F1 Score: {self.best_metrics['f1_score']:.4f}\n")
-                f.write(f"Accuracy: {self.best_metrics['accuracy']:.4f}\n")
-                f.write(f"Precision: {self.best_metrics['precision']:.4f}\n")
-                f.write(f"Recall: {self.best_metrics['recall']:.4f}\n")
+                f.write(f"F1 Score: {self.best_metrics.get('f1_score', 0):.4f}\n")
+                f.write(f"Accuracy: {self.best_metrics.get('accuracy', 0):.4f}\n")
+                f.write(f"Precision: {self.best_metrics.get('precision', 0):.4f}\n")
+                f.write(f"Recall: {self.best_metrics.get('recall', 0):.4f}\n")
             
             return output_path
             
@@ -116,6 +178,17 @@ def main():
     """Main execution"""
     try:
         logger.info("Starting model selection")
+        
+        # Debug current directory structure
+        logger.info(f"Current working directory: {os.getcwd()}")
+        logger.info(f"Directory contents: {os.listdir('.')}")
+        
+        if os.path.exists('artifacts'):
+            logger.info(f"artifacts contents: {os.listdir('artifacts')}")
+        if os.path.exists('artifacts/models'):
+            logger.info(f"artifacts/models contents: {os.listdir('artifacts/models')}")
+        if os.path.exists('artifacts/reports'):
+            logger.info(f"artifacts/reports contents: {os.listdir('artifacts/reports')}")
         
         selector = ModelSelector()
         selector.load_evaluation_report()
@@ -131,10 +204,10 @@ def main():
         print(f"Selection Criteria: {selection_report['selection_criteria']}")
         print(f"Best Score: {selection_report['best_score']:.4f}")
         print("\nBest Model Metrics:")
-        print(f"  Accuracy:  {selection_report['metrics_for_best']['accuracy']:.4f}")
-        print(f"  Precision: {selection_report['metrics_for_best']['precision']:.4f}")
-        print(f"  Recall:    {selection_report['metrics_for_best']['recall']:.4f}")
-        print(f"  F1-Score:  {selection_report['metrics_for_best']['f1_score']:.4f}")
+        print(f"  Accuracy:  {selection_report['metrics_for_best'].get('accuracy', 0):.4f}")
+        print(f"  Precision: {selection_report['metrics_for_best'].get('precision', 0):.4f}")
+        print(f"  Recall:    {selection_report['metrics_for_best'].get('recall', 0):.4f}")
+        print(f"  F1-Score:  {selection_report['metrics_for_best'].get('f1_score', 0):.4f}")
         
         if selection_report.get('runner_up'):
             print(f"\nRunner-up: {selection_report['runner_up']['model']} "
@@ -144,6 +217,8 @@ def main():
         
     except Exception as e:
         logger.error(f"Model selection failed: {str(e)}")
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 if __name__ == "__main__":
