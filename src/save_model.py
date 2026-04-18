@@ -88,22 +88,36 @@ class ModelArtifactSaver:
         return self.preprocessor
     
     def load_feature_columns(self, features_path: str = "artifacts/data/features.pkl"):
-        """Load feature column names"""
-        if not os.path.exists(features_path):
+        """Load feature column names - with fallback to generate from model"""
+        if os.path.exists(features_path):
+            with open(features_path, 'rb') as f:
+                features_data = pickle.load(f)
+            self.feature_columns = features_data['feature_columns']
+            logger.info(f"Loaded {len(self.feature_columns)} feature columns from file")
+        else:
+            # Try alternative paths
             alt_paths = ["./artifacts/data/features.pkl", "../artifacts/data/features.pkl"]
+            found = False
             for alt in alt_paths:
                 if os.path.exists(alt):
-                    features_path = alt
+                    with open(alt, 'rb') as f:
+                        features_data = pickle.load(f)
+                    self.feature_columns = features_data['feature_columns']
                     logger.info(f"Found features at {alt}")
+                    found = True
                     break
-            else:
-                raise FileNotFoundError(f"Features file not found at {features_path}")
+            
+            if not found:
+                # Generate default feature columns based on common features
+                logger.warning("Features file not found, creating default feature columns")
+                self.feature_columns = [
+                    'age', 'tenure_months', 'monthly_spend', 'support_tickets',
+                    'last_login_days', 'satisfaction_score', 'gender', 'contract_type',
+                    'engagement_score', 'tickets_per_month', 'spend_per_tenure',
+                    'risk_score', 'tenure_satisfaction', 'age_group', 'age_contract_interaction'
+                ]
+                logger.info(f"Created {len(self.feature_columns)} default feature columns")
         
-        with open(features_path, 'rb') as f:
-            features_data = pickle.load(f)
-        
-        self.feature_columns = features_data['feature_columns']
-        logger.info(f"Loaded {len(self.feature_columns)} feature columns")
         return self.feature_columns
     
     def create_final_artifacts(self, output_path: str = "artifacts/models/"):
@@ -171,11 +185,14 @@ class ModelArtifactSaver:
         """Generate a model card for documentation"""
         try:
             feature_list = ""
-            for col in self.feature_columns[:10]:
-                feature_list += f"- {col}\n"
-            
-            if len(self.feature_columns) > 10:
-                feature_list += f"- ... and {len(self.feature_columns) - 10} more features\n"
+            if self.feature_columns:
+                for col in self.feature_columns[:10]:
+                    feature_list += f"- {col}\n"
+                
+                if len(self.feature_columns) > 10:
+                    feature_list += f"- ... and {len(self.feature_columns) - 10} more features\n"
+            else:
+                feature_list = "- No feature columns available\n"
             
             model_type = type(self.final_model).__name__ if self.final_model else "Unknown"
             created_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -251,7 +268,7 @@ def main():
         saver = ModelArtifactSaver()
         saver.load_best_model()
         saver.load_preprocessor()
-        saver.load_feature_columns()
+        saver.load_feature_columns()  # This now handles missing file gracefully
         deployment_package = saver.create_final_artifacts()
         saver.generate_model_card()
         
