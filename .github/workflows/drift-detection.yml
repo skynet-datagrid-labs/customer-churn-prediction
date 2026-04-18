@@ -2,7 +2,7 @@ name: Data Drift Detection
 
 on:
   schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours
+    - cron: '0 */6 * * *'
   workflow_dispatch:
 
 jobs:
@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -95,7 +95,7 @@ jobs:
           "
       
       - name: Check drift severity
-      - id: drift-check
+        id: drift-check
         run: |
           DRIFT_SCORE=$(python -c "import json; data=json.load(open('artifacts/reports/drift_report.json')); print(data['drift_score'])")
           ALERTS=$(python -c "import json; data=json.load(open('artifacts/reports/drift_report.json')); print(len(data['alerts']))")
@@ -147,20 +147,20 @@ jobs:
           "
       
       - name: Upload drift report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: drift-analysis
           path: artifacts/reports/drift_report.json
       
       - name: Upload drift plots
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: drift-plots
           path: artifacts/plots/drift_analysis.png
       
       - name: Trigger retraining if needed
-      - if: steps.drift-check.outputs.retrain_needed == 'true'
-        uses: actions/github-script@v6
+        if: steps.drift-check.outputs.retrain_needed == 'true'
+        uses: actions/github-script@v7
         with:
           script: |
             github.rest.actions.createWorkflowDispatch({
