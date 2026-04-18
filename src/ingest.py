@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 class DataIngestor:
     """Handles data ingestion from Excel files"""
     
-    def __init__(self, file_path: str = "data/fictitious_company_data.xlsx"):
+    def __init__(self, file_path: str = "data/ficticious_company_data.xlsx"):
         self.file_path = file_path
         self.data = None
         self.metadata = {}
