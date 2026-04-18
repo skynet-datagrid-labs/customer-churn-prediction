@@ -2,7 +2,7 @@ name: Drift Detection
 
 on:
   schedule:
-    - cron: '0 */12 * * *'  # Every 12 hours
+    - cron: '0 */12 * * *'
   workflow_dispatch:
 
 jobs:
@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -26,7 +26,6 @@ jobs:
           import pandas as pd
           import numpy as np
           
-          # Create baseline data from original
           np.random.seed(42)
           baseline_data = pd.DataFrame({
               'age': np.random.normal(45, 15, 1000),
@@ -40,28 +39,24 @@ jobs:
           print('Baseline data created')
           "
       
-      - name: Generate current data (with potential drift)
+      - name: Generate current data
         run: |
           python -c "
           import pandas as pd
           import numpy as np
           
-          # Generate current data with possible drift
-          np.random.seed(int(np.random.randint(0, 10000)))
-          
-          # Introduce drift in some features
-          drift_amount = np.random.choice([0, 0.1, 0.2, 0.3], p=[0.7, 0.15, 0.1, 0.05])
-          
+          np.random.seed(42)
+          drift_amount = 0.15
           current_data = pd.DataFrame({
               'age': np.random.normal(45 + drift_amount*10, 15, 1000),
               'tenure_months': np.random.exponential(30 * (1 + drift_amount), 1000),
               'monthly_spend': np.random.gamma(5, 50 * (1 + drift_amount*0.5), 1000),
               'support_tickets': np.random.poisson(3 + drift_amount*2, 1000),
               'last_login_days': np.random.uniform(0, 60 * (1 - drift_amount*0.3), 1000),
-              'satisfaction_score': np.random.choice(range(1, 11), 1000, p=[0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1,0.1])
+              'satisfaction_score': np.random.choice(range(1, 11), 1000)
           })
           current_data.to_csv('current_data.csv', index=False)
-          print(f'Current data created with drift factor: {drift_amount}')
+          print('Current data created')
           "
       
       - name: Run drift detection
@@ -73,12 +68,6 @@ jobs:
           if [ -f artifacts/reports/drift_report.json ]; then
             DRIFT_SCORE=$(python -c "import json; d=json.load(open('artifacts/reports/drift_report.json')); print(d.get('drift_detected', False))")
             echo "drift_detected=$DRIFT_SCORE" >> $GITHUB_OUTPUT
-            
-            if [ "$DRIFT_SCORE" = "True" ]; then
-              echo "⚠️ Data drift detected! Retraining recommended."
-            else
-              echo "✅ No significant drift detected."
-            fi
           fi
       
       - name: Create drift alert
@@ -90,14 +79,9 @@ jobs:
           **Detection Time:** $(date)
           **Severity:** Medium-High
           
-          ## Drift Summary
-          - Population Stability Index (PSI) > 0.1 detected
-          - Feature distributions have changed significantly
-          
           ## Recommended Actions
           1. Trigger retraining pipeline
           2. Review feature importance
-          3. Validate model performance on new data
           
           View detailed report in artifacts/reports/drift_report.json
           EOF
@@ -105,10 +89,11 @@ jobs:
           cat drift_alert.md >> $GITHUB_STEP_SUMMARY
       
       - name: Upload drift report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: drift-detection-report
           path: |
             artifacts/reports/drift_report.json
             drift_alert.md
           retention-days: 30
+          overwrite: true
