@@ -12,10 +12,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -30,8 +30,10 @@ jobs:
           import pickle
           from sklearn.ensemble import RandomForestClassifier
           import numpy as np
+          import os
           
-          # Create mock model for testing
+          os.makedirs('artifacts/models', exist_ok=True)
+          
           mock_model = RandomForestClassifier(n_estimators=10, random_state=42)
           X_mock = np.random.rand(100, 10)
           y_mock = np.random.randint(0, 2, 100)
@@ -40,15 +42,14 @@ jobs:
           with open('artifacts/models/final_model.pkl', 'wb') as f:
               pickle.dump(mock_model, f)
           
-          # Create mock preprocessor
           from sklearn.preprocessing import StandardScaler
           mock_scaler = StandardScaler()
           mock_scaler.fit(X_mock)
           
           with open('artifacts/models/final_preprocessor.pkl', 'wb') as f:
-              pickle.dump(mock_scaler, f)
+              pickle.dump({'scaler': mock_scaler}, f)
           
-          print('Mock models created for testing')
+          print('Mock models created')
           "
       
       - name: Start API server
@@ -61,17 +62,20 @@ jobs:
           pytest tests/test_api.py -v --tb=short --cov=api --cov-report=xml
       
       - name: Upload test coverage
-        uses: codecov/codecov-action@v3
+        uses: actions/upload-artifact@v4
         with:
-          file: ./coverage.xml
-          flags: unittests
+          name: coverage-report
+          path: coverage.xml
+          retention-days: 7
+          overwrite: true
       
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: api-test-results
           path: |
             .pytest_cache/
             coverage.xml
           retention-days: 7
+          overwrite: true
