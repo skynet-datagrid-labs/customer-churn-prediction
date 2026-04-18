@@ -3,6 +3,7 @@
 import sys
 import os
 import argparse
+import json
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -86,6 +87,7 @@ class FeatureEngineer:
         # Log feature engineering results
         self.feature_columns = [col for col in df_feat.columns if col != 'churn']
         logger.info(f"Created {len(self.feature_columns)} total features")
+        logger.info(f"Feature columns: {self.feature_columns}")
         
         return df_feat
 
@@ -112,9 +114,38 @@ def main():
     
     # Save feature-engineered data
     output_path = Path("artifacts/data/feature_data.csv")
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     df_feat.to_csv(output_path, index=False)
     logger.info(f"Feature data saved to {output_path}")
     
+    # Save feature info JSON (THIS WAS MISSING!)
+    feature_info = {
+        "features": engineer.feature_columns,
+        "target": "churn",
+        "n_features": len(engineer.feature_columns),
+        "n_samples": len(df_feat),
+        "timestamp": str(pd.Timestamp.now()),
+        "feature_names": engineer.feature_columns
+    }
+    
+    info_path = Path("artifacts/reports/feature_info.json")
+    info_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(info_path, 'w') as f:
+        json.dump(feature_info, f, indent=2)
+    logger.info(f"Feature info saved to {info_path}")
+    
+    # Also save a simple text summary
+    summary_path = Path("artifacts/reports/feature_summary.txt")
+    with open(summary_path, 'w') as f:
+        f.write("="*50 + "\n")
+        f.write("FEATURE ENGINEERING SUMMARY\n")
+        f.write("="*50 + "\n\n")
+        f.write(f"Total features created: {len(engineer.feature_columns)}\n\n")
+        f.write("Feature list:\n")
+        for i, feat in enumerate(engineer.feature_columns, 1):
+            f.write(f"  {i}. {feat}\n")
+    
+    logger.info(f"Feature summary saved to {summary_path}")
     logger.info("Feature engineering completed successfully")
 
 
