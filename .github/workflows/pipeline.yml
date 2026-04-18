@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [ main ]
   schedule:
-    - cron: '0 0 * * 1'  # Weekly retraining
+    - cron: '0 0 * * 1'
   workflow_dispatch:
 
 env:
@@ -71,25 +71,25 @@ jobs:
           if [ ! -f "data/fictitious_company_data.xlsx" ]; then
             echo "Creating sample data file for testing"
             python -c "
-            import pandas as pd
-            import numpy as np
-            np.random.seed(42)
-            n = 1000
-            df = pd.DataFrame({
-                'customer_id': range(1, n+1),
-                'age': np.random.randint(18, 65, n),
-                'gender': np.random.choice(['Male', 'Female'], n),
-                'tenure_months': np.random.randint(1, 60, n),
-                'monthly_spend': np.random.uniform(10, 500, n),
-                'contract_type': np.random.choice(['Monthly', 'Yearly'], n),
-                'support_tickets': np.random.poisson(2, n),
-                'last_login_days': np.random.randint(0, 90, n),
-                'satisfaction_score': np.random.randint(1, 11, n),
-                'churn': np.random.choice([0, 1], n, p=[0.7, 0.3])
-            })
-            df.to_excel('data/fictitious_company_data.xlsx', index=False)
-            print('Sample data created')
-            "
+import pandas as pd
+import numpy as np
+np.random.seed(42)
+n = 1000
+df = pd.DataFrame({
+    'customer_id': range(1, n+1),
+    'age': np.random.randint(18, 65, n),
+    'gender': np.random.choice(['Male', 'Female'], n),
+    'tenure_months': np.random.randint(1, 60, n),
+    'monthly_spend': np.random.uniform(10, 500, n),
+    'contract_type': np.random.choice(['Monthly', 'Yearly'], n),
+    'support_tickets': np.random.poisson(2, n),
+    'last_login_days': np.random.randint(0, 90, n),
+    'satisfaction_score': np.random.randint(1, 11, n),
+    'churn': np.random.choice([0, 1], n, p=[0.7, 0.3])
+})
+df.to_excel('data/fictitious_company_data.xlsx', index=False)
+print('Sample data created')
+"
           fi
       
       - name: Run data ingestion
@@ -210,15 +210,7 @@ jobs:
           else
             echo "⚠️ WARNING: feature_info.json not found, creating dummy"
             mkdir -p artifacts/reports
-            cat > artifacts/reports/feature_info.json << 'EOF'
-            {
-              "features": ["age", "gender", "tenure_months", "monthly_spend", "contract_type", "support_tickets", "last_login_days", "satisfaction_score"],
-              "target": "churn",
-              "n_features": 8,
-              "n_samples": 800,
-              "note": "Auto-generated dummy feature info"
-            }
-            EOF
+            printf '{\n  "features": ["age", "gender", "tenure_months", "monthly_spend", "contract_type", "support_tickets", "last_login_days", "satisfaction_score"],\n  "target": "churn",\n  "n_features": 8,\n  "n_samples": 800,\n  "note": "Auto-generated dummy feature info"\n}' > artifacts/reports/feature_info.json
             echo "✅ Dummy feature_info.json created"
           fi
       
@@ -327,19 +319,7 @@ jobs:
           if [ ! -f "artifacts/reports/evaluation_report.json" ]; then
             echo "Creating dummy evaluation report"
             mkdir -p artifacts/reports
-            cat > artifacts/reports/evaluation_report.json << 'EOF'
-            {
-              "comparison": {},
-              "best_model": "logistic_regression",
-              "best_model_metrics": {
-                "accuracy": 0.75,
-                "precision": 0.74,
-                "recall": 0.73,
-                "f1_score": 0.735,
-                "confusion_matrix": [[500, 100], [80, 320]]
-              }
-            }
-            EOF
+            printf '{\n  "comparison": {},\n  "best_model": "logistic_regression",\n  "best_model_metrics": {\n    "accuracy": 0.75,\n    "precision": 0.74,\n    "recall": 0.73,\n    "f1_score": 0.735,\n    "confusion_matrix": [[500, 100], [80, 320]]\n  }\n}' > artifacts/reports/evaluation_report.json
             echo "✅ Dummy evaluation report created"
           fi
       
@@ -398,21 +378,21 @@ jobs:
           if [ ! -f "artifacts/models/best_model.pkl" ]; then
             echo "Creating dummy best model"
             python -c "
-            import joblib
-            from sklearn.ensemble import RandomForestClassifier
-            import pandas as pd
-            import numpy as np
-            
-            model = RandomForestClassifier(n_estimators=10, random_state=42)
-            X_dummy = pd.DataFrame(np.random.rand(100, 8))
-            y_dummy = np.random.randint(0, 2, 100)
-            model.fit(X_dummy, y_dummy)
-            
-            import os
-            os.makedirs('artifacts/models', exist_ok=True)
-            joblib.dump(model, 'artifacts/models/best_model.pkl')
-            print('✅ Dummy model created')
-            "
+import joblib
+from sklearn.ensemble import RandomForestClassifier
+import pandas as pd
+import numpy as np
+
+model = RandomForestClassifier(n_estimators=10, random_state=42)
+X_dummy = pd.DataFrame(np.random.rand(100, 8))
+y_dummy = np.random.randint(0, 2, 100)
+model.fit(X_dummy, y_dummy)
+
+import os
+os.makedirs('artifacts/models', exist_ok=True)
+joblib.dump(model, 'artifacts/models/best_model.pkl')
+print('✅ Dummy model created')
+"
           fi
       
       - name: Upload best model
@@ -501,15 +481,7 @@ jobs:
           if [ ! -f "artifacts/reports/feature_info.json" ]; then
             echo "Creating dummy feature info"
             mkdir -p artifacts/reports
-            cat > artifacts/reports/feature_info.json << 'EOF'
-            {
-              "features": ["age", "gender", "tenure_months", "monthly_spend", "contract_type", "support_tickets", "last_login_days", "satisfaction_score"],
-              "target": "churn",
-              "n_features": 8,
-              "n_samples": 800,
-              "note": "Auto-generated dummy feature info"
-            }
-            EOF
+            printf '{\n  "features": ["age", "gender", "tenure_months", "monthly_spend", "contract_type", "support_tickets", "last_login_days", "satisfaction_score"],\n  "target": "churn",\n  "n_features": 8,\n  "n_samples": 800,\n  "note": "Auto-generated dummy feature info"\n}' > artifacts/reports/feature_info.json
             echo "✅ Dummy feature info created"
           fi
       
@@ -518,21 +490,21 @@ jobs:
           if [ ! -f "artifacts/models/best_model.pkl" ]; then
             echo "No model found, creating dummy model"
             python -c "
-            import joblib
-            from sklearn.ensemble import RandomForestClassifier
-            import pandas as pd
-            import numpy as np
-            
-            model = RandomForestClassifier(n_estimators=10, random_state=42)
-            X_dummy = pd.DataFrame(np.random.rand(100, 8))
-            y_dummy = np.random.randint(0, 2, 100)
-            model.fit(X_dummy, y_dummy)
-            
-            import os
-            os.makedirs('artifacts/models', exist_ok=True)
-            joblib.dump(model, 'artifacts/models/best_model.pkl')
-            print('✅ Dummy model created')
-            "
+import joblib
+from sklearn.ensemble import RandomForestClassifier
+import pandas as pd
+import numpy as np
+
+model = RandomForestClassifier(n_estimators=10, random_state=42)
+X_dummy = pd.DataFrame(np.random.rand(100, 8))
+y_dummy = np.random.randint(0, 2, 100)
+model.fit(X_dummy, y_dummy)
+
+import os
+os.makedirs('artifacts/models', exist_ok=True)
+joblib.dump(model, 'artifacts/models/best_model.pkl')
+print('✅ Dummy model created')
+"
           fi
       
       - name: Save all artifacts with metadata
@@ -575,63 +547,59 @@ jobs:
       - name: Generate confusion matrix and plots
         run: |
           python -c "
-          import json
-          import matplotlib
-          matplotlib.use('Agg')
-          import matplotlib.pyplot as plt
-          import seaborn as sns
-          import pandas as pd
-          import numpy as np
-          from sklearn.metrics import confusion_matrix
-          import os
-          
-          os.makedirs('artifacts/plots', exist_ok=True)
-          
-          # Load evaluation results
-          eval_path = 'artifacts/reports/evaluation_report.json'
-          if os.path.exists(eval_path):
-              with open(eval_path, 'r') as f:
-                  eval_data = json.load(f)
-              
-              # Create confusion matrix plot
-              if 'best_model_metrics' in eval_data and 'confusion_matrix' in eval_data['best_model_metrics']:
-                  cm = np.array(eval_data['best_model_metrics']['confusion_matrix'])
-                  plt.figure(figsize=(8, 6))
-                  sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
-                  plt.title('Confusion Matrix - Best Model')
-                  plt.ylabel('True Label')
-                  plt.xlabel('Predicted Label')
-                  plt.savefig('artifacts/plots/confusion_matrix.png')
-                  print('✅ Confusion matrix saved')
-              
-              # Create model comparison bar chart
-              if 'comparison' in eval_data and eval_data['comparison']:
-                  models = list(eval_data['comparison'].keys())
-                  metrics = ['accuracy', 'precision', 'recall', 'f1_score']
-                  
-                  fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-                  axes = axes.flatten()
-                  
-                  for idx, metric in enumerate(metrics):
-                      values = [eval_data['comparison'][model].get(metric, 0) for model in models]
-                      axes[idx].bar(models, values, color=['#1f77b4', '#2ca02c', '#ff7f0e'])
-                      axes[idx].set_title(f'{metric.capitalize()} Comparison')
-                      axes[idx].set_ylim([0, 1])
-                      axes[idx].set_ylabel(metric.capitalize())
-                      axes[idx].grid(True, alpha=0.3)
-                      
-                      for i, v in enumerate(values):
-                          axes[idx].text(i, v + 0.02, f'{v:.3f}', ha='center')
-                  
-                  plt.tight_layout()
-                  plt.savefig('artifacts/plots/model_comparison.png')
-                  print('✅ Model comparison plot saved')
-          else:
-              print('⚠️ No evaluation report found, creating dummy plot')
-              plt.figure(figsize=(8, 6))
-              plt.text(0.5, 0.5, 'No evaluation data available', ha='center', va='center', fontsize=14)
-              plt.savefig('artifacts/plots/confusion_matrix.png')
-          "
+import json
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
+import numpy as np
+import os
+
+os.makedirs('artifacts/plots', exist_ok=True)
+
+eval_path = 'artifacts/reports/evaluation_report.json'
+if os.path.exists(eval_path):
+    with open(eval_path, 'r') as f:
+        eval_data = json.load(f)
+    
+    if 'best_model_metrics' in eval_data and 'confusion_matrix' in eval_data['best_model_metrics']:
+        cm = np.array(eval_data['best_model_metrics']['confusion_matrix'])
+        plt.figure(figsize=(8, 6))
+        sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+        plt.title('Confusion Matrix - Best Model')
+        plt.ylabel('True Label')
+        plt.xlabel('Predicted Label')
+        plt.savefig('artifacts/plots/confusion_matrix.png')
+        print('✅ Confusion matrix saved')
+    
+    if 'comparison' in eval_data and eval_data['comparison']:
+        models = list(eval_data['comparison'].keys())
+        metrics = ['accuracy', 'precision', 'recall', 'f1_score']
+        
+        fig, axes = plt.subplots(2, 2, figsize=(12, 10))
+        axes = axes.flatten()
+        
+        for idx, metric in enumerate(metrics):
+            values = [eval_data['comparison'][model].get(metric, 0) for model in models]
+            axes[idx].bar(models, values, color=['#1f77b4', '#2ca02c', '#ff7f0e'])
+            axes[idx].set_title(f'{metric.capitalize()} Comparison')
+            axes[idx].set_ylim([0, 1])
+            axes[idx].set_ylabel(metric.capitalize())
+            axes[idx].grid(True, alpha=0.3)
+            
+            for i, v in enumerate(values):
+                axes[idx].text(i, v + 0.02, f'{v:.3f}', ha='center')
+        
+        plt.tight_layout()
+        plt.savefig('artifacts/plots/model_comparison.png')
+        print('✅ Model comparison plot saved')
+else:
+    print('⚠️ No evaluation report found, creating dummy plot')
+    plt.figure(figsize=(8, 6))
+    plt.text(0.5, 0.5, 'No evaluation data available', ha='center', va='center', fontsize=14)
+    plt.savefig('artifacts/plots/confusion_matrix.png')
+"
       
       - name: Upload plots
         uses: actions/upload-artifact@v4
@@ -713,18 +681,18 @@ jobs:
             echo "Creating dummy model for Docker build"
             mkdir -p artifacts/models
             python -c "
-            import joblib
-            from sklearn.ensemble import RandomForestClassifier
-            import pandas as pd
-            import numpy as np
-            
-            model = RandomForestClassifier(n_estimators=5, random_state=42)
-            X_dummy = pd.DataFrame(np.random.rand(100, 8))
-            y_dummy = np.random.randint(0, 2, 100)
-            model.fit(X_dummy, y_dummy)
-            joblib.dump(model, 'artifacts/models/best_model.pkl')
-            print('✅ Dummy model created for Docker')
-            "
+import joblib
+from sklearn.ensemble import RandomForestClassifier
+import pandas as pd
+import numpy as np
+
+model = RandomForestClassifier(n_estimators=5, random_state=42)
+X_dummy = pd.DataFrame(np.random.rand(100, 8))
+y_dummy = np.random.randint(0, 2, 100)
+model.fit(X_dummy, y_dummy)
+joblib.dump(model, 'artifacts/models/best_model.pkl')
+print('✅ Dummy model created for Docker')
+"
           fi
       
       - name: Set up Docker Buildx
@@ -758,19 +726,7 @@ jobs:
       - name: Simulate API deployment
         run: |
           mkdir -p deployment
-          cat > deployment/deployment_info.json << EOF
-          {
-            "deployment_id": "${{ github.run_id }}",
-            "timestamp": "$(date -Iseconds)",
-            "image": "ghcr.io/${{ github.repository }}/ml-api:${{ github.run_number }}",
-            "status": "deployed",
-            "endpoints": {
-              "health": "/health",
-              "predict": "/predict",
-              "docs": "/docs"
-            }
-          }
-          EOF
+          printf '{\n  "deployment_id": "${{ github.run_id }}",\n  "timestamp": "'$(date -Iseconds)'",\n  "image": "ghcr.io/${{ github.repository }}/ml-api:${{ github.run_number }}",\n  "status": "deployed",\n  "endpoints": {\n    "health": "/health",\n    "predict": "/predict",\n    "docs": "/docs"\n  }\n}' > deployment/deployment_info.json
           echo "✅ API deployment simulation complete"
       
       - name: Upload deployment info
@@ -816,18 +772,18 @@ jobs:
             echo "Creating dummy model for testing"
             mkdir -p artifacts/models
             python -c "
-            import joblib
-            from sklearn.ensemble import RandomForestClassifier
-            import pandas as pd
-            import numpy as np
-            
-            model = RandomForestClassifier(n_estimators=5, random_state=42)
-            X_dummy = pd.DataFrame(np.random.rand(100, 8))
-            y_dummy = np.random.randint(0, 2, 100)
-            model.fit(X_dummy, y_dummy)
-            joblib.dump(model, 'artifacts/models/best_model.pkl')
-            print('✅ Dummy model created for testing')
-            "
+import joblib
+from sklearn.ensemble import RandomForestClassifier
+import pandas as pd
+import numpy as np
+
+model = RandomForestClassifier(n_estimators=5, random_state=42)
+X_dummy = pd.DataFrame(np.random.rand(100, 8))
+y_dummy = np.random.randint(0, 2, 100)
+model.fit(X_dummy, y_dummy)
+joblib.dump(model, 'artifacts/models/best_model.pkl')
+print('✅ Dummy model created for testing')
+"
           fi
       
       - name: Start API server
@@ -883,23 +839,23 @@ jobs:
             echo "Creating dummy data for drift detection"
             mkdir -p artifacts/data
             python -c "
-            import pandas as pd
-            import numpy as np
-            np.random.seed(42)
-            df = pd.DataFrame({
-                'age': np.random.randint(18, 65, 500),
-                'gender': np.random.choice([0, 1], 500),
-                'tenure_months': np.random.randint(1, 60, 500),
-                'monthly_spend': np.random.uniform(10, 500, 500),
-                'contract_type': np.random.choice([0, 1], 500),
-                'support_tickets': np.random.poisson(2, 500),
-                'last_login_days': np.random.randint(0, 90, 500),
-                'satisfaction_score': np.random.randint(1, 11, 500),
-                'churn': np.random.choice([0, 1], 500, p=[0.7, 0.3])
-            })
-            df.to_csv('artifacts/data/feature_data.csv', index=False)
-            print('✅ Dummy data created')
-            "
+import pandas as pd
+import numpy as np
+np.random.seed(42)
+df = pd.DataFrame({
+    'age': np.random.randint(18, 65, 500),
+    'gender': np.random.choice([0, 1], 500),
+    'tenure_months': np.random.randint(1, 60, 500),
+    'monthly_spend': np.random.uniform(10, 500, 500),
+    'contract_type': np.random.choice([0, 1], 500),
+    'support_tickets': np.random.poisson(2, 500),
+    'last_login_days': np.random.randint(0, 90, 500),
+    'satisfaction_score': np.random.randint(1, 11, 500),
+    'churn': np.random.choice([0, 1], 500, p=[0.7, 0.3])
+})
+df.to_csv('artifacts/data/feature_data.csv', index=False)
+print('✅ Dummy data created')
+"
           fi
       
       - name: Run drift detection
@@ -960,43 +916,7 @@ jobs:
       
       - name: Create notification summary
         run: |
-          cat > notification.md << 'EOF'
-          # ML Pipeline Execution Report
-          
-          ## Overview
-          - **Run ID**: ${{ github.run_id }}
-          - **Run Number**: ${{ github.run_number }}
-          - **Trigger**: ${{ github.event_name }}
-          - **Status**: ${{ job.status }}
-          - **Timestamp**: $(date)
-          
-          ## Jobs Executed
-          - ✅ Setup Environment
-          - ✅ Data Ingestion
-          - ✅ Data Validation
-          - ✅ Preprocessing
-          - ✅ Feature Engineering
-          - ✅ Model Training (3 models)
-          - ✅ Model Evaluation
-          - ✅ Best Model Selection
-          - ✅ Artifact Saving
-          - ✅ Report Generation
-          - ✅ Docker Build
-          - ✅ API Deployment
-          - ✅ API Testing
-          - ✅ Drift Detection
-          
-          ## Artifacts
-          - Models saved to: `artifacts/models/`
-          - Metrics saved to: `artifacts/metrics/`
-          - Reports saved to: `artifacts/reports/`
-          - Plots saved to: `artifacts/plots/`
-          
-          ## Next Steps
-          - Monitor API performance
-          - Review drift detection results
-          - Schedule regular retraining as needed
-          EOF
+          printf '# ML Pipeline Execution Report\n\n## Overview\n- **Run ID**: ${{ github.run_id }}\n- **Run Number**: ${{ github.run_number }}\n- **Trigger**: ${{ github.event_name }}\n- **Status**: ${{ job.status }}\n- **Timestamp**: $(date)\n\n## Jobs Executed\n- ✅ Setup Environment\n- ✅ Data Ingestion\n- ✅ Data Validation\n- ✅ Preprocessing\n- ✅ Feature Engineering\n- ✅ Model Training (3 models)\n- ✅ Model Evaluation\n- ✅ Best Model Selection\n- ✅ Artifact Saving\n- ✅ Report Generation\n- ✅ Docker Build\n- ✅ API Deployment\n- ✅ API Testing\n- ✅ Drift Detection\n\n## Artifacts\n- Models saved to: `artifacts/models/`\n- Metrics saved to: `artifacts/metrics/`\n- Reports saved to: `artifacts/reports/`\n- Plots saved to: `artifacts/plots/`\n\n## Next Steps\n- Monitor API performance\n- Review drift detection results\n- Schedule regular retraining as needed\n' > notification.md
           
           cat notification.md >> $GITHUB_STEP_SUMMARY
       
