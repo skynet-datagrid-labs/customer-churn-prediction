@@ -1,0 +1,14 @@
+name: pipeline
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pipeline placeholder
+        run: echo "Pipeline workflow scaffolded"

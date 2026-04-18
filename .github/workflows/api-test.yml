@@ -1,0 +1,16 @@
+name: api-test
+
+on:
+  push:
+    paths:
+      - "api/**"
+      - "tests/**"
+  pull_request:
+
+jobs:
+  test-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: API test placeholder
+        run: python -m unittest -q
