@@ -3,7 +3,6 @@
 __version__ = "1.0.0"
 __author__ = "ML Engineering Team"
 
-from typing import Dict, Any, List, Optional
 import logging
 
 # Configure logging
@@ -14,7 +13,4 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-__all__ = [
-    'logger',
-    '__version__'
-]
+__all__ = ['logger', '__version__']
