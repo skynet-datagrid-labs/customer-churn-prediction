@@ -6,22 +6,22 @@ on:
   pull_request:
     branches: [ main ]
   schedule:
-    - cron: '0 0 * * 1'  # Weekly retraining
-  workflow_dispatch:  # Manual trigger
+    - cron: '0 0 * * 1'
+  workflow_dispatch:
 
 jobs:
   setup-environment:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
       - name: Cache pip packages
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
@@ -43,19 +43,20 @@ jobs:
           pip freeze > artifacts/reports/requirements_freeze.txt
       
       - name: Upload environment artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: environment-info
           path: artifacts/reports/requirements_freeze.txt
+          retention-days: 7
 
   ingest-data:
     runs-on: ubuntu-latest
     needs: [setup-environment]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -66,7 +67,7 @@ jobs:
         run: python src/ingest.py
       
       - name: Upload raw data
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: raw-data
           path: artifacts/data/raw_data.csv
@@ -76,10 +77,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [ingest-data]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -87,7 +88,7 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download raw data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: raw-data
           path: artifacts/data/
@@ -96,13 +97,13 @@ jobs:
         run: python src/validate.py
       
       - name: Upload validation report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: validation-report
           path: artifacts/reports/validation_report.json
       
       - name: Upload validated data
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: validated-data
           path: artifacts/data/validated_data.csv
@@ -111,10 +112,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [validate-data]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -122,7 +123,7 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download validated data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: validated-data
           path: artifacts/data/
@@ -131,7 +132,7 @@ jobs:
         run: python src/preprocess.py
       
       - name: Upload preprocessed data
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: preprocessed-data
           path: artifacts/data/preprocessed_data.csv
@@ -140,10 +141,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [preprocess-data]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -151,7 +152,7 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download preprocessed data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: preprocessed-data
           path: artifacts/data/
@@ -160,13 +161,13 @@ jobs:
         run: python src/feature_engineering.py
       
       - name: Upload feature-engineered data
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: feature-data
           path: artifacts/data/feature_data.csv
       
       - name: Upload feature info
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: feature-info
           path: artifacts/reports/feature_info.json
@@ -178,10 +179,10 @@ jobs:
       matrix:
         model: [logistic_regression, random_forest, xgboost]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -189,7 +190,7 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download feature data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: feature-data
           path: artifacts/data/
@@ -198,13 +199,13 @@ jobs:
         run: python src/train.py --model ${{ matrix.model }}
       
       - name: Upload ${{ matrix.model }} model
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: model-${{ matrix.model }}
           path: artifacts/models/${{ matrix.model }}.pkl
       
       - name: Upload ${{ matrix.model }} metrics
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: metrics-${{ matrix.model }}
           path: artifacts/metrics/${{ matrix.model }}_metrics.json
@@ -213,10 +214,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [train-models]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -224,19 +225,19 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download all model metrics
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: metrics-logistic_regression
           path: artifacts/metrics/
       
       - name: Download random forest metrics
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: metrics-random_forest
           path: artifacts/metrics/
       
       - name: Download xgboost metrics
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: metrics-xgboost
           path: artifacts/metrics/
@@ -245,7 +246,7 @@ jobs:
         run: python src/evaluate.py
       
       - name: Upload evaluation report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: evaluation-report
           path: artifacts/reports/evaluation_report.json
@@ -254,10 +255,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [evaluate-models]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -265,25 +266,25 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download evaluation report
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: evaluation-report
           path: artifacts/reports/
       
       - name: Download all models
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: model-logistic_regression
           path: artifacts/models/
       
       - name: Download random forest model
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: model-random_forest
           path: artifacts/models/
       
       - name: Download xgboost model
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: model-xgboost
           path: artifacts/models/
@@ -292,13 +293,13 @@ jobs:
         run: python src/select_model.py
       
       - name: Upload best model
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: best-model
           path: artifacts/models/best_model.pkl
       
       - name: Upload selection report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: model-selection
           path: artifacts/reports/model_selection.json
@@ -307,10 +308,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [select-best-model]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -318,13 +319,13 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download best model
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: best-model
           path: artifacts/models/
       
       - name: Download feature info
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: feature-info
           path: artifacts/reports/
@@ -333,7 +334,7 @@ jobs:
         run: python src/save_model.py
       
       - name: Upload final artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: final-artifacts
           path: artifacts/
@@ -343,10 +344,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [evaluate-models, save-artifacts]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -354,7 +355,7 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download final artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: final-artifacts
           path: artifacts/
@@ -385,7 +386,7 @@ jobs:
           "
       
       - name: Upload reports
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: reports-plots
           path: artifacts/plots/
@@ -394,10 +395,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [generate-reports]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: final-artifacts
           path: artifacts/
@@ -406,7 +407,7 @@ jobs:
         run: tar -czf ml-artifacts.tar.gz artifacts/
       
       - name: Upload to GitHub Releases
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         with:
           files: ml-artifacts.tar.gz
@@ -418,26 +419,26 @@ jobs:
     runs-on: ubuntu-latest
     needs: [save-artifacts]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Download final artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: final-artifacts
           path: artifacts/
       
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
       
       - name: Log in to GitHub Container Registry
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       
       - name: Build and push Docker image
-        uses: docker/build-push-action@v4
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: true
@@ -451,7 +452,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [build-docker-image]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Simulate deployment
         run: |
@@ -464,7 +465,7 @@ jobs:
           echo "Health check: https://api.company.com/health"
       
       - name: Save deployment info
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: deployment-info
           path: deploy_logs/
@@ -473,10 +474,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [deploy-api]
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -503,10 +504,10 @@ jobs:
     needs: [save-artifacts]
     if: github.event_name == 'schedule'
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.9'
       
@@ -514,7 +515,7 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download reference data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: final-artifacts
           path: artifacts/
@@ -523,7 +524,7 @@ jobs:
         run: python src/drift.py
       
       - name: Upload drift report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: drift-report
           path: artifacts/reports/drift_report.json
@@ -540,7 +541,7 @@ jobs:
       
       - name: Trigger retraining if drift detected
         if: steps.check-drift.outputs.drift_detected == 'true'
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             github.rest.actions.createWorkflowDispatch({
@@ -565,7 +566,7 @@ jobs:
     needs: [test-api, drift-detection, retrain-trigger]
     if: always()
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       
       - name: Collect all job statuses
         run: |
