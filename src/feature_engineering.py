@@ -76,13 +76,13 @@ class FeatureEngineer:
         if 'monthly_spend' in df_feat.columns:
             spend_threshold = df_feat['monthly_spend'].quantile(0.75)
             df_feat['high_spender'] = (df_feat['monthly_spend'] > spend_threshold).astype(int)
-            logger.info(f"Created 'high_spender' feature")
+            logger.info("Created 'high_spender' feature")
         
         # Create support intensive flag
         if 'support_tickets' in df_feat.columns:
             support_threshold = df_feat['support_tickets'].quantile(0.75)
             df_feat['support_intensive'] = (df_feat['support_tickets'] > support_threshold).astype(int)
-            logger.info(f"Created 'support_intensive' feature")
+            logger.info("Created 'support_intensive' feature")
         
         # Log feature engineering results
         self.feature_columns = [col for col in df_feat.columns if col != 'churn']
@@ -118,28 +118,29 @@ def main():
     df_feat.to_csv(output_path, index=False)
     logger.info(f"Feature data saved to {output_path}")
     
-    # Save feature info JSON (THIS WAS MISSING!)
+    # Save feature info JSON
+    reports_dir = Path("artifacts/reports")
+    reports_dir.mkdir(parents=True, exist_ok=True)
+    
     feature_info = {
         "features": engineer.feature_columns,
         "target": "churn",
         "n_features": len(engineer.feature_columns),
         "n_samples": len(df_feat),
-        "timestamp": str(pd.Timestamp.now()),
-        "feature_names": engineer.feature_columns
+        "timestamp": str(pd.Timestamp.now())
     }
     
-    info_path = Path("artifacts/reports/feature_info.json")
-    info_path.parent.mkdir(parents=True, exist_ok=True)
+    info_path = reports_dir / "feature_info.json"
     with open(info_path, 'w') as f:
         json.dump(feature_info, f, indent=2)
     logger.info(f"Feature info saved to {info_path}")
     
-    # Also save a simple text summary
-    summary_path = Path("artifacts/reports/feature_summary.txt")
+    # Save feature summary text file
+    summary_path = reports_dir / "feature_summary.txt"
     with open(summary_path, 'w') as f:
-        f.write("="*50 + "\n")
+        f.write("=" * 50 + "\n")
         f.write("FEATURE ENGINEERING SUMMARY\n")
-        f.write("="*50 + "\n\n")
+        f.write("=" * 50 + "\n\n")
         f.write(f"Total features created: {len(engineer.feature_columns)}\n\n")
         f.write("Feature list:\n")
         for i, feat in enumerate(engineer.feature_columns, 1):
