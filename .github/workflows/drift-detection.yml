@@ -2,13 +2,12 @@ name: Data Drift Detection
 
 on:
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 */6 * * *'  # Every 6 hours
   workflow_dispatch:
 
 jobs:
   detect-drift:
     runs-on: ubuntu-latest
-    
     steps:
       - uses: actions/checkout@v4
       
@@ -20,167 +19,49 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       
-      - name: Download reference dataset
+      - name: Get current data
         run: |
           mkdir -p artifacts/data
-          if [ -f "artifacts/data/reference_data.csv" ]; then
-            echo "Reference data exists"
-          else
-            python src/ingest.py --save_reference
-          fi
+          python src/ingest.py --production
       
-      - name: Get current production data
-        run: python src/ingest.py --production
+      - name: Get reference data
+        uses: actions/download-artifact@v4
+        with:
+          name: feature-data
+          path: artifacts/data/
+        continue-on-error: true
       
-      - name: Run comprehensive drift analysis
-        run: python src/drift.py --full_analysis
-      
-      - name: Generate drift report
-        run: |
-          python -c "
-          import json
-          import pandas as pd
-          import numpy as np
-          from scipy import stats
-          
-          # Load data
-          reference = pd.read_csv('artifacts/data/reference_data.csv')
-          current = pd.read_csv('artifacts/data/current_data.csv')
-          
-          drift_report = {
-              'timestamp': str(pd.Timestamp.now()),
-              'features': {},
-              'drift_score': 0.0,
-              'drift_threshold': 0.2,
-              'alerts': []
-          }
-          
-          # Calculate drift for each numerical feature
-          numerical_features = ['age', 'tenure_months', 'monthly_spend', 
-                                'support_tickets', 'last_login_days', 'satisfaction_score']
-          
-          for feature in numerical_features:
-              ks_stat, p_value = stats.ks_2samp(reference[feature], current[feature])
-              drift_report['features'][feature] = {
-                  'ks_statistic': float(ks_stat),
-                  'p_value': float(p_value),
-                  'drift_detected': p_value < 0.05
-              }
-              if p_value < 0.05:
-                  drift_report['alerts'].append(f'Drift detected in {feature}')
-          
-          # Calculate overall drift score
-          drift_report['drift_score'] = np.mean([drift_report['features'][f]['ks_statistic'] 
-                                                for f in numerical_features])
-          
-          # Categorical features
-          categorical_features = ['gender', 'contract_type']
-          for feature in categorical_features:
-              ref_dist = reference[feature].value_counts(normalize=True)
-              curr_dist = current[feature].value_counts(normalize=True)
-              chi2_stat, p_value, _, _ = stats.chi2_contingency(pd.crosstab(reference[feature], current[feature]))
-              drift_report['features'][feature] = {
-                  'chi2_statistic': float(chi2_stat),
-                  'p_value': float(p_value),
-                  'drift_detected': p_value < 0.05
-              }
-              if p_value < 0.05:
-                  drift_report['alerts'].append(f'Drift detected in {feature}')
-          
-          with open('artifacts/reports/drift_report.json', 'w') as f:
-              json.dump(drift_report, f, indent=2)
-          
-          print(f'Drift Score: {drift_report[\"drift_score\"]:.3f}')
-          print(f'Alerts: {len(drift_report[\"alerts\"])}')
-          "
-      
-      - name: Check drift severity
-        id: drift-check
-        run: |
-          DRIFT_SCORE=$(python -c "import json; data=json.load(open('artifacts/reports/drift_report.json')); print(data['drift_score'])")
-          ALERTS=$(python -c "import json; data=json.load(open('artifacts/reports/drift_report.json')); print(len(data['alerts']))")
-          
-          echo "drift_score=$DRIFT_SCORE" >> $GITHUB_OUTPUT
-          echo "alerts_count=$ALERTS" >> $GITHUB_OUTPUT
-          
-          if (( $(echo "$DRIFT_SCORE > 0.3" | bc -l) )); then
-            echo "severity=high" >> $GITHUB_OUTPUT
-            echo "retrain_needed=true" >> $GITHUB_OUTPUT
-          elif (( $(echo "$DRIFT_SCORE > 0.2" | bc -l) )); then
-            echo "severity=medium" >> $GITHUB_OUTPUT
-            echo "retrain_needed=true" >> $GITHUB_OUTPUT
-          else
-            echo "severity=low" >> $GITHUB_OUTPUT
-            echo "retrain_needed=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Create drift visualization
-        run: |
-          python -c "
-          import json
-          import matplotlib.pyplot as plt
-          import seaborn as sns
-          import pandas as pd
-          
-          with open('artifacts/reports/drift_report.json') as f:
-              drift_data = json.load(f)
-          
-          # Create drift summary plot
-          features = list(drift_data['features'].keys())
-          drift_scores = [drift_data['features'][f].get('ks_statistic', 
-                          drift_data['features'][f].get('chi2_statistic', 0)) 
-                         for f in features]
-          
-          plt.figure(figsize=(12, 6))
-          colors = ['red' if score > 0.2 else 'orange' if score > 0.1 else 'green' 
-                   for score in drift_scores]
-          plt.bar(features, drift_scores, color=colors)
-          plt.axhline(y=0.2, color='red', linestyle='--', label='High Drift Threshold')
-          plt.axhline(y=0.1, color='orange', linestyle='--', label='Medium Drift Threshold')
-          plt.xlabel('Features')
-          plt.ylabel('Drift Score')
-          plt.title('Feature Drift Analysis')
-          plt.xticks(rotation=45)
-          plt.legend()
-          plt.tight_layout()
-          plt.savefig('artifacts/plots/drift_analysis.png')
-          "
+      - name: Run drift detection
+        run: python src/drift.py
       
       - name: Upload drift report
         uses: actions/upload-artifact@v4
         with:
-          name: drift-analysis
+          name: drift-report
           path: artifacts/reports/drift_report.json
       
-      - name: Upload drift plots
-        uses: actions/upload-artifact@v4
-        with:
-          name: drift-plots
-          path: artifacts/plots/drift_analysis.png
-      
-      - name: Trigger retraining if needed
-        if: steps.drift-check.outputs.retrain_needed == 'true'
-        uses: actions/github-script@v7
-        with:
-          script: |
-            github.rest.actions.createWorkflowDispatch({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              workflow_id: 'retrain.yml',
-              ref: 'main'
-            })
-      
-      - name: Send drift alert
-        if: steps.drift-check.outputs.severity == 'high'
+      - name: Check drift severity
+        id: drift-check
         run: |
-          echo "## ⚠️ High Data Drift Detected" >> $GITHUB_STEP_SUMMARY
-          echo "- Drift Score: ${{ steps.drift-check.outputs.drift_score }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Alerts: ${{ steps.drift-check.outputs.alerts_count }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Retraining automatically triggered" >> $GITHUB_STEP_SUMMARY
+          if [ -f "artifacts/reports/drift_report.json" ]; then
+            python -c "
+            import json
+            with open('artifacts/reports/drift_report.json') as f:
+                report = json.load(f)
+            score = report.get('drift_score', 0)
+            print(f'Drift Score: {score}')
+            if score > 0.3:
+                print('::set-output name=severity::high')
+            elif score > 0.2:
+                print('::set-output name=severity::medium')
+            else:
+                print('::set-output name=severity::low')
+            "
+          fi
       
-      - name: Drift summary
+      - name: Create drift summary
         run: |
           echo "## Data Drift Report" >> $GITHUB_STEP_SUMMARY
-          echo "- Drift Score: ${{ steps.drift-check.outputs.drift_score }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Severity: ${{ steps.drift-check.outputs.severity }}" >> $GITHUB_STEP_SUMMARY
-          echo "- Timestamp: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Timestamp**: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Severity**: ${{ steps.drift-check.outputs.severity }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Report**: artifacts/reports/drift_report.json" >> $GITHUB_STEP_SUMMARY
