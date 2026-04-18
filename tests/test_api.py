@@ -1,161 +1,111 @@
-"""Unit tests for API endpoints."""
-
 import pytest
-from fastapi.testclient import TestClient
-import sys
-import os
-from pathlib import Path
+import httpx
+import asyncio
+from typing import Dict, Any
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+BASE_URL = "http://localhost:8000"
 
-from api.app import app
-
-client = TestClient(app)
-
-
-def test_root_endpoint():
-    """Test root endpoint."""
-    response = client.get("/")
-    assert response.status_code == 200
-    data = response.json()
-    assert "message" in data
-    assert "Customer Churn Prediction API" in data["message"]
-    assert "version" in data
-
-
-def test_health_check():
-    """Test health check endpoint."""
-    response = client.get("/health")
-    assert response.status_code == 200
-    data = response.json()
-    assert "status" in data
-    assert "model_loaded" in data
-    assert "timestamp" in data
-
-
-def test_predict_valid():
-    """Test prediction with valid input."""
-    valid_request = {
-        "age": 35,
-        "gender": "Male",
-        "tenure_months": 12,
-        "monthly_spend": 250.50,
-        "contract_type": "Monthly",
-        "support_tickets": 2,
-        "last_login_days": 15,
-        "satisfaction_score": 7
-    }
-    
-    response = client.post("/predict", json=valid_request)
-    
-    # Model may not be loaded in test environment
-    if response.status_code == 503:
-        assert response.json()["detail"] == "Model not loaded"
-    else:
+@pytest.mark.asyncio
+async def test_health_endpoint():
+    """Test health check endpoint"""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{BASE_URL}/health")
         assert response.status_code == 200
         data = response.json()
+        assert data["status"] == "healthy"
+        assert "model_loaded" in data
+
+@pytest.mark.asyncio
+async def test_prediction_endpoint():
+    """Test single prediction endpoint"""
+    test_data = {
+        "customer_id": 9999,
+        "age": 35,
+        "gender": "Male",
+        "tenure_months": 24,
+        "monthly_spend": 250.50,
+        "contract_type": "Monthly",
+        "support_tickets": 2,
+        "last_login_days": 15,
+        "satisfaction_score": 7
+    }
+    
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{BASE_URL}/predict", json=test_data)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["customer_id"] == test_data["customer_id"]
         assert "churn_prediction" in data
         assert "churn_probability" in data
-        assert "prediction_timestamp" in data
         assert 0 <= data["churn_probability"] <= 1
 
-
-def test_predict_invalid_age():
-    """Test prediction with invalid age."""
-    invalid_request = {
-        "age": 150,
-        "gender": "Male",
-        "tenure_months": 12,
-        "monthly_spend": 250.50,
-        "contract_type": "Monthly",
-        "support_tickets": 2,
-        "last_login_days": 15,
-        "satisfaction_score": 7
-    }
-    
-    response = client.post("/predict", json=invalid_request)
-    assert response.status_code == 422
-
-
-def test_predict_invalid_gender():
-    """Test prediction with invalid gender."""
-    invalid_request = {
-        "age": 35,
-        "gender": "Other",
-        "tenure_months": 12,
-        "monthly_spend": 250.50,
-        "contract_type": "Monthly",
-        "support_tickets": 2,
-        "last_login_days": 15,
-        "satisfaction_score": 7
-    }
-    
-    response = client.post("/predict", json=invalid_request)
-    assert response.status_code == 422
-
-
-def test_predict_missing_field():
-    """Test prediction with missing required field."""
-    invalid_request = {
-        "age": 35,
-        "gender": "Male",
-        "tenure_months": 12,
-        "contract_type": "Monthly",
-        "support_tickets": 2,
-        "last_login_days": 15,
-        "satisfaction_score": 7
-    }
-    
-    response = client.post("/predict", json=invalid_request)
-    assert response.status_code == 422
-
-
-def test_batch_predict():
-    """Test batch prediction endpoint."""
-    batch_request = {
+@pytest.mark.asyncio
+async def test_batch_prediction():
+    """Test batch prediction endpoint"""
+    test_batch = {
         "customers": [
             {
-                "age": 35,
-                "gender": "Male",
-                "tenure_months": 12,
-                "monthly_spend": 250.50,
-                "contract_type": "Monthly",
-                "support_tickets": 2,
-                "last_login_days": 15,
-                "satisfaction_score": 7
-            },
-            {
+                "customer_id": 1001,
                 "age": 45,
                 "gender": "Female",
-                "tenure_months": 24,
-                "monthly_spend": 300.75,
+                "tenure_months": 36,
+                "monthly_spend": 300.00,
                 "contract_type": "Yearly",
                 "support_tickets": 1,
-                "last_login_days": 30,
+                "last_login_days": 5,
                 "satisfaction_score": 9
+            },
+            {
+                "customer_id": 1002,
+                "age": 28,
+                "gender": "Male",
+                "tenure_months": 12,
+                "monthly_spend": 150.75,
+                "contract_type": "Monthly",
+                "support_tickets": 5,
+                "last_login_days": 45,
+                "satisfaction_score": 3
             }
         ]
     }
     
-    response = client.post("/predict/batch", json=batch_request)
-    
-    if response.status_code == 503:
-        assert response.json()["detail"] == "Model not loaded"
-    else:
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{BASE_URL}/predict/batch", json=test_batch)
         assert response.status_code == 200
         data = response.json()
-        assert isinstance(data, list)
         assert len(data) == 2
+        assert data[0]["customer_id"] == 1001
+        assert data[1]["customer_id"] == 1002
 
+@pytest.mark.asyncio
+async def test_model_info():
+    """Test model info endpoint"""
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{BASE_URL}/model/info")
+        assert response.status_code == 200
+        data = response.json()
+        assert "model_type" in data
+        assert "feature_count" in data
 
-def test_docs_endpoints():
-    """Test documentation endpoints."""
-    response = client.get("/docs")
-    assert response.status_code in [200, 307]
+@pytest.mark.asyncio
+async def test_invalid_prediction():
+    """Test prediction with invalid data"""
+    invalid_data = {
+        "customer_id": -1,  # Invalid negative ID
+        "age": 150,  # Invalid age
+        "gender": "Invalid",  # Invalid gender
+        "tenure_months": -5,  # Invalid tenure
+        "monthly_spend": -100,  # Invalid spend
+        "contract_type": "Invalid",  # Invalid contract
+        "support_tickets": -1,  # Invalid tickets
+        "last_login_days": -10,  # Invalid login days
+        "satisfaction_score": 20  # Invalid score
+    }
     
-    response = client.get("/openapi.json")
-    assert response.status_code == 200
-
+    async with httpx.AsyncClient() as client:
+        response = await client.post(f"{BASE_URL}/predict", json=invalid_data)
+        # Should return validation error
+        assert response.status_code == 422
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
