@@ -8,8 +8,7 @@ import pandas as pd
 import numpy as np
 from pathlib import Path
 from sklearn.metrics import (accuracy_score, precision_score, recall_score, 
-                            f1_score, roc_auc_score, confusion_matrix,
-                            classification_report)
+                            f1_score, roc_auc_score, confusion_matrix)
 import joblib
 import logging
 
@@ -20,166 +19,89 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 class ModelEvaluator:
     """Evaluate and compare multiple models."""
     
     def __init__(self):
         self.results = {}
-        
-    def evaluate_model(self, model_path: str, model_name: str, X_test: pd.DataFrame, y_test: pd.Series) -> dict:
+    
+    def evaluate_model(self, model, X_test, y_test, model_name: str) -> dict:
         """Evaluate a single model."""
         logger.info(f"Evaluating {model_name}...")
         
-        try:
-            # Load model
-            model = joblib.load(model_path)
-            
-            # Make predictions
-            y_pred = model.predict(X_test)
-            y_pred_proba = model.predict_proba(X_test)[:, 1] if hasattr(model, 'predict_proba') else None
-            
-            # Calculate metrics
-            metrics = {
-                "accuracy": float(accuracy_score(y_test, y_pred)),
-                "precision": float(precision_score(y_test, y_pred, zero_division=0)),
-                "recall": float(recall_score(y_test, y_pred, zero_division=0)),
-                "f1_score": float(f1_score(y_test, y_pred, zero_division=0))
-            }
-            
-            if y_pred_proba is not None:
-                metrics["roc_auc"] = float(roc_auc_score(y_test, y_pred_proba))
-            
-            # Confusion matrix
-            cm = confusion_matrix(y_test, y_pred)
-            metrics["confusion_matrix"] = cm.tolist()
-            
-            # Classification report
-            report = classification_report(y_test, y_pred, output_dict=True, zero_division=0)
-            metrics["classification_report"] = report
-            
-            logger.info(f"{model_name} metrics: accuracy={metrics['accuracy']:.4f}, f1={metrics['f1_score']:.4f}")
-            
-            return metrics
-            
-        except Exception as e:
-            logger.error(f"Error evaluating {model_name}: {str(e)}")
-            return None
-    
-    def find_test_data(self) -> tuple:
-        """Find available test data from any model."""
-        models = ['logistic_regression', 'random_forest', 'xgboost']
+        # Make predictions
+        y_pred = model.predict(X_test)
+        y_pred_proba = model.predict_proba(X_test)[:, 1] if hasattr(model, 'predict_proba') else None
         
-        for model_name in models:
-            test_data_path = Path(f"artifacts/data/test_data_{model_name}.csv")
-            if test_data_path.exists():
-                logger.info(f"Found test data from {model_name}")
-                test_df = pd.read_csv(test_data_path)
-                X_test = test_df.drop('churn', axis=1)
-                y_test = test_df['churn']
-                return X_test, y_test
+        # Calculate metrics
+        metrics = {
+            "accuracy": float(accuracy_score(y_test, y_pred)),
+            "precision": float(precision_score(y_test, y_pred, zero_division=0)),
+            "recall": float(recall_score(y_test, y_pred, zero_division=0)),
+            "f1_score": float(f1_score(y_test, y_pred, zero_division=0))
+        }
         
-        # If no test data found, create from feature data
-        feature_data_path = Path("artifacts/data/feature_data.csv")
-        if feature_data_path.exists():
-            logger.info("No test data found, creating from feature data")
-            df = pd.read_csv(feature_data_path)
-            from sklearn.model_selection import train_test_split
-            X = df.drop('churn', axis=1)
-            y = df['churn']
-            _, X_test, _, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-            return X_test, y_test
+        if y_pred_proba is not None:
+            metrics["roc_auc"] = float(roc_auc_score(y_test, y_pred_proba))
         
-        return None, None
+        # Confusion matrix
+        cm = confusion_matrix(y_test, y_pred)
+        metrics["confusion_matrix"] = cm.tolist()
+        
+        logger.info(f"{model_name}: F1={metrics['f1_score']:.4f}, AUC={metrics.get('roc_auc', 0):.4f}")
+        
+        return metrics
     
     def compare_models(self) -> dict:
         """Compare all trained models."""
         logger.info("Comparing all models...")
         
-        # Find test data
-        X_test, y_test = self.find_test_data()
-        if X_test is None or y_test is None:
-            logger.error("No test data available for evaluation")
-            return {
-                "comparison": {},
-                "best_model": None,
-                "best_model_metrics": None
-            }
+        # Load test data
+        test_data_path = Path("artifacts/data/test_data.csv")
+        if not test_data_path.exists():
+            logger.error("Test data not found")
+            return {"comparison": {}, "best_model": None, "best_model_metrics": None}
         
-        # Find all available models
-        models_dir = Path("artifacts/models")
-        model_files = list(models_dir.glob("*.pkl"))
+        test_df = pd.read_csv(test_data_path)
+        X_test = test_df.drop('churn', axis=1)
+        y_test = test_df['churn']
         
-        # Filter out preprocessor and best_model (we'll evaluate best separately)
-        model_names = []
-        for model_file in model_files:
-            model_name = model_file.stem
-            if model_name not in ['preprocessor', 'best_model']:
-                model_names.append(model_name)
+        # Load and evaluate each model
+        models = ['logistic_regression', 'random_forest', 'xgboost']
         
-        if not model_names:
-            logger.error("No model files found in artifacts/models/")
-            return {
-                "comparison": {},
-                "best_model": None,
-                "best_model_metrics": None
-            }
-        
-        logger.info(f"Found {len(model_names)} models: {model_names}")
-        
-        # Evaluate each model
-        for model_name in model_names:
+        for model_name in models:
             model_path = Path(f"artifacts/models/{model_name}.pkl")
             if model_path.exists():
-                metrics = self.evaluate_model(model_path, model_name, X_test, y_test)
-                if metrics is not None:
-                    self.results[model_name] = metrics
+                model = joblib.load(model_path)
+                metrics = self.evaluate_model(model, X_test, y_test, model_name)
+                self.results[model_name] = metrics
             else:
-                logger.warning(f"Model file not found for {model_name}")
+                logger.warning(f"Model not found: {model_name}")
         
         if not self.results:
             logger.error("No models were successfully evaluated")
-            return {
-                "comparison": {},
-                "best_model": None,
-                "best_model_metrics": None
-            }
-        
-        # Create comparison DataFrame
-        comparison_data = {}
-        for model_name, metrics in self.results.items():
-            comparison_data[model_name] = {
-                "accuracy": metrics.get("accuracy", 0),
-                "precision": metrics.get("precision", 0),
-                "recall": metrics.get("recall", 0),
-                "f1_score": metrics.get("f1_score", 0),
-                "roc_auc": metrics.get("roc_auc", 0)
-            }
-        
-        comparison_df = pd.DataFrame(comparison_data).T
-        
-        logger.info("\n" + "="*50)
-        logger.info("MODEL COMPARISON")
-        logger.info("="*50)
-        logger.info(f"\n{comparison_df[['accuracy', 'precision', 'recall', 'f1_score']].to_string()}")
+            return {"comparison": {}, "best_model": None, "best_model_metrics": None}
         
         # Find best model based on F1-score
-        best_model_name = max(self.results.items(), key=lambda x: x[1].get('f1_score', 0))
-        best_model = best_model_name[0]
-        best_metrics = best_model_name[1]
+        best_model_name = max(self.results.items(), key=lambda x: x[1]['f1_score'])[0]
+        best_metrics = self.results[best_model_name]
         
-        logger.info(f"\n{'='*50}")
-        logger.info(f"Best model based on F1-score: {best_model}")
-        logger.info(f"F1-Score: {best_metrics['f1_score']:.4f}")
-        logger.info(f"Accuracy: {best_metrics['accuracy']:.4f}")
-        logger.info(f"Precision: {best_metrics['precision']:.4f}")
-        logger.info(f"Recall: {best_metrics['recall']:.4f}")
-        logger.info("="*50)
+        # Create comparison table
+        comparison_df = pd.DataFrame(self.results).T
+        logger.info("\n" + "="*60)
+        logger.info("MODEL COMPARISON RESULTS")
+        logger.info("="*60)
+        logger.info(f"\n{comparison_df[['accuracy', 'precision', 'recall', 'f1_score', 'roc_auc']].to_string()}")
+        logger.info(f"\nBest Model: {best_model_name}")
+        logger.info(f"Best F1-Score: {best_metrics['f1_score']:.4f}")
         
         return {
-            "comparison": {k: v for k, v in self.results.items()},
-            "best_model": best_model,
+            "comparison": self.results,
+            "best_model": best_model_name,
             "best_model_metrics": best_metrics
         }
+
 
 def main():
     """Main evaluation entry point."""
@@ -195,21 +117,8 @@ def main():
     comparison_results = evaluator.compare_models()
     
     if not comparison_results['comparison']:
-        logger.error("No models were successfully evaluated. Exiting.")
-        # Create dummy results to avoid pipeline failure
-        dummy_results = {
-            "comparison": {"no_models": {"accuracy": 0, "precision": 0, "recall": 0, "f1_score": 0}},
-            "best_model": "none",
-            "best_model_metrics": {"accuracy": 0, "precision": 0, "recall": 0, "f1_score": 0}
-        }
-        
-        report_path = Path("artifacts/reports/evaluation_report.json")
-        report_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(report_path, 'w') as f:
-            json.dump(dummy_results, f, indent=2)
-        
-        logger.warning("Created dummy evaluation report")
-        sys.exit(0)  # Exit gracefully instead of failing
+        logger.error("No models were successfully evaluated")
+        sys.exit(1)
     
     # Save evaluation report
     report_path = Path("artifacts/reports/evaluation_report.json")
@@ -218,83 +127,8 @@ def main():
     with open(report_path, 'w') as f:
         json.dump(comparison_results, f, indent=2)
     
-    # Create summary visualization
-    try:
-        import matplotlib
-        matplotlib.use('Agg')
-        import matplotlib.pyplot as plt
-        
-        # Prepare data for plotting
-        models = list(comparison_results['comparison'].keys())
-        metrics = ['accuracy', 'precision', 'recall', 'f1_score']
-        
-        if len(models) > 0:
-            fig, axes = plt.subplots(2, 2, figsize=(12, 10))
-            axes = axes.flatten()
-            
-            colors = ['#1f77b4', '#2ca02c', '#ff7f0e', '#d62728', '#9467bd']
-            
-            for idx, metric in enumerate(metrics):
-                values = [comparison_results['comparison'][model].get(metric, 0) for model in models]
-                bars = axes[idx].bar(models, values, color=colors[:len(models)])
-                axes[idx].set_title(f'{metric.capitalize()} Comparison', fontsize=14, fontweight='bold')
-                axes[idx].set_ylabel(metric.capitalize(), fontsize=12)
-                axes[idx].set_ylim([0, 1])
-                axes[idx].grid(True, alpha=0.3, axis='y')
-                
-                # Add value labels on bars
-                for bar, v in zip(bars, values):
-                    axes[idx].text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.02, 
-                                 f'{v:.3f}', ha='center', va='bottom', fontsize=10, fontweight='bold')
-            
-            plt.suptitle('Model Performance Comparison', fontsize=16, fontweight='bold')
-            plt.tight_layout()
-            
-            # Ensure plots directory exists
-            plots_dir = Path("artifacts/plots")
-            plots_dir.mkdir(parents=True, exist_ok=True)
-            
-            plt.savefig(plots_dir / 'model_comparison.png', dpi=100, bbox_inches='tight')
-            logger.info("Model comparison plot saved to artifacts/plots/model_comparison.png")
-        
-    except Exception as e:
-        logger.warning(f"Could not create visualization: {str(e)}")
-    
-    # Save best model info
-    best_model_info = {
-        "best_model": comparison_results['best_model'],
-        "metrics": comparison_results['best_model_metrics'],
-        "timestamp": str(pd.Timestamp.now()),
-        "all_models_evaluated": list(comparison_results['comparison'].keys())
-    }
-    
-    best_model_path = Path("artifacts/reports/best_model_info.json")
-    with open(best_model_path, 'w') as f:
-        json.dump(best_model_info, f, indent=2)
-    
-    logger.info(f"Evaluation completed successfully. Best model: {comparison_results['best_model']}")
-    
-    # Create a summary for GitHub Actions
-    summary_file = Path("artifacts/reports/evaluation_summary.txt")
-    with open(summary_file, 'w') as f:
-        f.write("="*60 + "\n")
-        f.write("MODEL EVALUATION SUMMARY\n")
-        f.write("="*60 + "\n\n")
-        f.write(f"Best Model: {comparison_results['best_model']}\n")
-        f.write(f"F1-Score: {comparison_results['best_model_metrics'].get('f1_score', 0):.4f}\n")
-        f.write(f"Accuracy: {comparison_results['best_model_metrics'].get('accuracy', 0):.4f}\n")
-        f.write(f"Precision: {comparison_results['best_model_metrics'].get('precision', 0):.4f}\n")
-        f.write(f"Recall: {comparison_results['best_model_metrics'].get('recall', 0):.4f}\n\n")
-        f.write("All Models Performance:\n")
-        f.write("-"*40 + "\n")
-        for model, metrics in comparison_results['comparison'].items():
-            f.write(f"\n{model}:\n")
-            f.write(f"  Accuracy:  {metrics.get('accuracy', 0):.4f}\n")
-            f.write(f"  Precision: {metrics.get('precision', 0):.4f}\n")
-            f.write(f"  Recall:    {metrics.get('recall', 0):.4f}\n")
-            f.write(f"  F1-Score:  {metrics.get('f1_score', 0):.4f}\n")
-    
-    logger.info(f"Evaluation summary saved to {summary_file}")
+    logger.info(f"Evaluation completed. Best model: {comparison_results['best_model']}")
+
 
 if __name__ == "__main__":
     main()
