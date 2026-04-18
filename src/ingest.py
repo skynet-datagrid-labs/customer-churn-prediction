@@ -4,7 +4,6 @@ import sys
 import os
 import argparse
 import pandas as pd
-import numpy as np
 from pathlib import Path
 import logging
 
@@ -15,6 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 class DataIngestor:
     """Handle data ingestion from various sources."""
     
@@ -22,7 +22,7 @@ class DataIngestor:
         self.data_path = Path(data_path)
         self.raw_data_dir = Path("artifacts/data")
         self.raw_data_dir.mkdir(parents=True, exist_ok=True)
-        
+    
     def ingest(self, retraining: bool = False) -> pd.DataFrame:
         """Load and return the dataset."""
         try:
@@ -66,6 +66,7 @@ class DataIngestor:
             logger.error(f"Error ingesting data: {str(e)}")
             raise
 
+
 def main():
     """Main entry point for data ingestion."""
     parser = argparse.ArgumentParser(description="Ingest company data")
@@ -87,6 +88,7 @@ def main():
         logger.info("Saved current production dataset")
     
     logger.info("Data ingestion completed successfully")
+
 
 if __name__ == "__main__":
     main()
