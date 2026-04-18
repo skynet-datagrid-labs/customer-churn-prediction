@@ -1,23 +1,21 @@
 name: API Testing
 
 on:
-  push:
-    paths:
-      - 'api/**'
-      - 'tests/**'
+  workflow_dispatch:
   pull_request:
     paths:
       - 'api/**'
-  workflow_dispatch:
+      - 'tests/test_api.py'
 
 jobs:
-  test:
+  test-api-endpoints:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v3
       
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v4
         with:
           python-version: '3.9'
       
@@ -26,36 +24,54 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-cov httpx
       
-      - name: Create dummy model for testing
+      - name: Create mock model for testing
         run: |
-          mkdir -p artifacts/models
           python -c "
-          import joblib
+          import pickle
           from sklearn.ensemble import RandomForestClassifier
-          import pandas as pd
           import numpy as np
-          X = pd.DataFrame(np.random.rand(100, 8))
-          y = np.random.randint(0, 2, 100)
-          model = RandomForestClassifier()
-          model.fit(X, y)
-          joblib.dump(model, 'artifacts/models/best_model.pkl')
+          
+          # Create mock model for testing
+          mock_model = RandomForestClassifier(n_estimators=10, random_state=42)
+          X_mock = np.random.rand(100, 10)
+          y_mock = np.random.randint(0, 2, 100)
+          mock_model.fit(X_mock, y_mock)
+          
+          with open('artifacts/models/final_model.pkl', 'wb') as f:
+              pickle.dump(mock_model, f)
+          
+          # Create mock preprocessor
           from sklearn.preprocessing import StandardScaler
-          import joblib
-          scaler = StandardScaler()
-          scaler.fit(X)
-          joblib.dump(scaler, 'artifacts/models/preprocessor.pkl')
+          mock_scaler = StandardScaler()
+          mock_scaler.fit(X_mock)
+          
+          with open('artifacts/models/final_preprocessor.pkl', 'wb') as f:
+              pickle.dump(mock_scaler, f)
+          
+          print('Mock models created for testing')
           "
       
       - name: Start API server
         run: |
-          nohup uvicorn api.app:app --host 0.0.0.0 --port 8000 &
+          uvicorn api.app:app --host 0.0.0.0 --port 8000 &
           sleep 5
       
-      - name: Run tests
-        run: pytest tests/test_api.py -v --cov=api --cov-report=xml
+      - name: Run API tests
+        run: |
+          pytest tests/test_api.py -v --tb=short --cov=api --cov-report=xml
       
-      - name: Upload coverage
-        uses: codecov/codecov-action@v4
+      - name: Upload test coverage
+        uses: codecov/codecov-action@v3
         with:
           file: ./coverage.xml
           flags: unittests
+      
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v3
+        with:
+          name: api-test-results
+          path: |
+            .pytest_cache/
+            coverage.xml
+          retention-days: 7
