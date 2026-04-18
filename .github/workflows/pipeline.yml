@@ -305,6 +305,20 @@ jobs:
           name: evaluation-report
           path: artifacts/reports/
       
+      - name: Download all models (CRITICAL FIX)
+        uses: actions/download-artifact@v4
+        with:
+          pattern: model-*
+          path: artifacts/models/
+          merge-multiple: true
+      
+      - name: Debug - Check downloaded files
+        run: |
+          echo "=== Checking artifacts/models/ ==="
+          ls -la artifacts/models/ || echo "No models directory"
+          echo "=== Checking artifacts/reports/ ==="
+          ls -la artifacts/reports/ || echo "No reports directory"
+      
       - name: Select best model
         run: python src/select_model.py
       
