@@ -1,16 +1,28 @@
-"""ML Pipeline for Company Churn Prediction."""
+"""
+ML Company Workflow - Production ML Pipeline
+Author: Senior MLOps Engineer
+Version: 1.0.0
+"""
 
 __version__ = "1.0.0"
 __author__ = "ML Engineering Team"
 
-import logging
+from .ingest import DataIngestor
+from .validate import DataValidator
+from .preprocess import DataPreprocessor
+from .feature_engineering import FeatureEngineer
+from .train import ModelTrainer
+from .evaluate import ModelEvaluator
+from .select_model import ModelSelector
+from .drift import DriftDetector
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-
-logger = logging.getLogger(__name__)
-
-__all__ = ['logger', '__version__']
+__all__ = [
+    'DataIngestor',
+    'DataValidator', 
+    'DataPreprocessor',
+    'FeatureEngineer',
+    'ModelTrainer',
+    'ModelEvaluator',
+    'ModelSelector',
+    'DriftDetector'
+]
