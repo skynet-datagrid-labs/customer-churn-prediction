@@ -1,77 +1,38 @@
-"""Pydantic schemas for API request/response validation."""
-
 from pydantic import BaseModel, Field, validator
 from typing import Optional, List
 from datetime import datetime
 
-
-class PredictionRequest(BaseModel):
-    """Single prediction request schema."""
-    
-    age: int = Field(..., ge=18, le=100, description="Customer age")
-    gender: str = Field(..., description="Customer gender (Male/Female)")
+class CustomerBase(BaseModel):
+    customer_id: int = Field(..., gt=0, description="Unique customer identifier")
+    age: int = Field(..., ge=18, le=100, description="Customer age in years")
+    gender: str = Field(..., regex="^(Male|Female)$", description="Customer gender")
     tenure_months: int = Field(..., ge=0, le=120, description="Months as customer")
-    monthly_spend: float = Field(..., ge=0, le=1000, description="Average monthly spend")
-    contract_type: str = Field(..., description="Contract type (Monthly/Yearly)")
+    monthly_spend: float = Field(..., ge=0, le=10000, description="Average monthly spend")
+    contract_type: str = Field(..., regex="^(Monthly|Yearly)$", description="Contract type")
     support_tickets: int = Field(..., ge=0, le=50, description="Number of support tickets")
     last_login_days: int = Field(..., ge=0, le=365, description="Days since last login")
     satisfaction_score: int = Field(..., ge=1, le=10, description="Customer satisfaction score")
-    
-    @validator('gender')
-    def validate_gender(cls, v):
-        if v not in ['Male', 'Female']:
-            raise ValueError('Gender must be Male or Female')
-        return v
-    
-    @validator('contract_type')
-    def validate_contract(cls, v):
-        if v not in ['Monthly', 'Yearly']:
-            raise ValueError('Contract type must be Monthly or Yearly')
-        return v
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "age": 35,
-                "gender": "Male",
-                "tenure_months": 12,
-                "monthly_spend": 250.50,
-                "contract_type": "Monthly",
-                "support_tickets": 2,
-                "last_login_days": 15,
-                "satisfaction_score": 7
-            }
-        }
 
+class PredictionRequest(CustomerBase):
+    pass
 
 class PredictionResponse(BaseModel):
-    """Prediction response schema."""
-    
-    churn_prediction: int = Field(..., description="Predicted churn (0=No, 1=Yes)")
+    customer_id: int
+    churn_prediction: int = Field(..., description="0=No churn, 1=Churn predicted")
     churn_probability: float = Field(..., ge=0, le=1, description="Probability of churn")
     prediction_timestamp: str
-    model_version: str = "latest"
-    
-    class Config:
-        schema_extra = {
-            "example": {
-                "churn_prediction": 0,
-                "churn_probability": 0.23,
-                "prediction_timestamp": "2024-01-15T10:30:00",
-                "model_version": "latest"
-            }
-        }
-
+    model_version: str
 
 class BatchPredictionRequest(BaseModel):
-    """Batch prediction request schema."""
-    
-    customers: List[PredictionRequest] = Field(..., min_items=1, max_items=100)
-
+    customers: List[PredictionRequest]
 
 class HealthResponse(BaseModel):
-    """Health check response schema."""
-    
     status: str
     model_loaded: bool
     timestamp: str
+
+class MetricsResponse(BaseModel):
+    total_predictions: int
+    average_confidence: float
+    model_version: str
+    last_updated: str
