@@ -8,9 +8,14 @@ import numpy as np
 from pathlib import Path
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 import joblib
+import logging
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from src import logger
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 class DataPreprocessor:
     """Preprocess data for ML models."""
@@ -18,6 +23,7 @@ class DataPreprocessor:
     def __init__(self):
         self.scaler = StandardScaler()
         self.label_encoders = {}
+        self.outlier_limits = {}
         
     def preprocess(self, df: pd.DataFrame, fit: bool = True) -> pd.DataFrame:
         """Apply preprocessing to dataframe."""
@@ -44,7 +50,6 @@ class DataPreprocessor:
                 if fit:
                     upper_limit = X[col].quantile(0.99)
                     lower_limit = X[col].quantile(0.01)
-                    self.outlier_limits = getattr(self, 'outlier_limits', {})
                     self.outlier_limits[col] = {'upper': upper_limit, 'lower': lower_limit}
                 else:
                     upper_limit = self.outlier_limits.get(col, {}).get('upper', X[col].quantile(0.99))
@@ -98,7 +103,7 @@ class DataPreprocessor:
         preprocessor_data = {
             'scaler': self.scaler,
             'label_encoders': self.label_encoders,
-            'outlier_limits': getattr(self, 'outlier_limits', {})
+            'outlier_limits': self.outlier_limits
         }
         joblib.dump(preprocessor_data, path)
         logger.info(f"Preprocessor saved to {path}")
