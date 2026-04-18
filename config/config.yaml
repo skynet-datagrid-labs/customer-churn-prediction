@@ -1,3 +1,94 @@
-project_name: ml-company-workflow2
-data_path: data/fictitious_company_data.xlsx
-model_output_dir: artifacts/models
+# ML Pipeline Configuration
+
+data:
+  raw_data_path: "data/fictitious_company_data.xlsx"
+  processed_data_path: "artifacts/data/"
+  validation_rules:
+    age:
+      min: 18
+      max: 100
+      required: true
+    tenure_months:
+      min: 0
+      max: 120
+      required: true
+    monthly_spend:
+      min: 0
+      max: 1000
+      required: true
+    support_tickets:
+      min: 0
+      max: 50
+      required: true
+    satisfaction_score:
+      min: 1
+      max: 10
+      required: true
+    churn:
+      allowed_values: [0, 1]
+      required: true
+
+models:
+  logistic_regression:
+    enabled: true
+    params:
+      C: [0.1, 1.0, 10.0]
+      max_iter: 1000
+      random_state: 42
+  
+  random_forest:
+    enabled: true
+    params:
+      n_estimators: [100, 200]
+      max_depth: [10, 20, None]
+      min_samples_split: [2, 5, 10]
+      random_state: 42
+  
+  xgboost:
+    enabled: true
+    params:
+      n_estimators: [100, 200]
+      max_depth: [3, 6, 9]
+      learning_rate: [0.01, 0.1, 0.3]
+      random_state: 42
+
+training:
+  test_size: 0.2
+  validation_size: 0.1
+  random_state: 42
+  cv_folds: 5
+  scoring_metric: "f1"
+
+features:
+  numerical:
+    - age
+    - tenure_months
+    - monthly_spend
+    - support_tickets
+    - last_login_days
+    - satisfaction_score
+  
+  categorical:
+    - gender
+    - contract_type
+  
+  target: churn
+
+monitoring:
+  drift_threshold: 0.2
+  performance_threshold: 0.75
+  alert_channels:
+    - github_actions
+    - logs
+
+api:
+  host: "0.0.0.0"
+  port: 8000
+  workers: 4
+  rate_limit: "100/minute"
+  timeout: 30
+
+deployment:
+  docker_registry: "ghcr.io"
+  image_name: "ml-api"
+  environment: "production"
