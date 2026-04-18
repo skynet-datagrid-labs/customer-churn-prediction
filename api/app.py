@@ -4,23 +4,19 @@ import sys
 import os
 from pathlib import Path
 
-# Add parent directory to path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
 import pandas as pd
 import numpy as np
 import joblib
-from typing import List, Dict, Any
 from datetime import datetime
 import logging
 
 from api.schemas import (
     PredictionRequest, PredictionResponse, 
-    HealthResponse, BatchPredictionRequest,
-    ModelInfoResponse
+    HealthResponse, BatchPredictionRequest
 )
 
 # Configure logging
@@ -45,10 +41,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global variables for model and preprocessor
+# Global variables
 model = None
 preprocessor = None
 feature_columns = None
+
 
 def load_model():
     """Load the trained model and preprocessor."""
@@ -70,30 +67,25 @@ def load_model():
             preprocessor = preprocessor_data
             logger.info("Preprocessor loaded")
         
-        # Load feature columns
-        feature_info_path = Path("artifacts/reports/feature_info_enhanced.json")
-        if feature_info_path.exists():
-            import json
-            with open(feature_info_path, 'r') as f:
-                feature_info = json.load(f)
-            feature_columns = feature_info.get('feature_names', [])
+        # Load feature columns from preprocessor or create default
+        global feature_columns
+        feature_columns = ['age', 'gender', 'tenure_months', 'monthly_spend', 
+                          'contract_type', 'support_tickets', 'last_login_days', 
+                          'satisfaction_score']
         
         return True
     except Exception as e:
         logger.error(f"Error loading model: {e}")
         return False
 
-# Load model on startup
+
 @app.on_event("startup")
 async def startup_event():
     """Load model when API starts."""
-    success = load_model()
-    if not success:
-        logger.warning("Model not loaded - predictions will not work")
-    else:
-        logger.info("API ready for predictions")
+    load_model()
 
-@app.get("/", response_model=Dict[str, str])
+
+@app.get("/", response_model=dict)
 async def root():
     """Root endpoint."""
     return {
@@ -102,6 +94,7 @@ async def root():
         "docs": "/docs",
         "health": "/health"
     }
+
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -112,27 +105,6 @@ async def health_check():
         timestamp=datetime.now().isoformat()
     )
 
-@app.get("/model/info", response_model=ModelInfoResponse)
-async def model_info():
-    """Get model information."""
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    
-    # Try to load model metadata
-    metadata_path = Path("artifacts/reports/best_model_metadata.json")
-    metadata = {}
-    
-    if metadata_path.exists():
-        import json
-        with open(metadata_path, 'r') as f:
-            metadata = json.load(f)
-    
-    return ModelInfoResponse(
-        model_type=type(model).__name__,
-        features=feature_columns or [],
-        n_features=len(feature_columns) if feature_columns else 0,
-        metadata=metadata
-    )
 
 @app.post("/predict", response_model=PredictionResponse)
 async def predict(request: PredictionRequest):
@@ -147,37 +119,19 @@ async def predict(request: PredictionRequest):
         # Create DataFrame
         df = pd.DataFrame([input_data])
         
-        # Preprocess if preprocessor is available
-        if preprocessor:
-            from src.preprocess import DataPreprocessor
-            prep = DataPreprocessor()
-            prep.load_preprocessor()
-            df_processed = prep.preprocess(df, fit=False)
-            
-            # Get features (exclude target if exists)
-            if 'churn' in df_processed.columns:
-                df_processed = df_processed.drop('churn', axis=1)
-        else:
-            # Basic preprocessing
-            df_processed = df.copy()
-            
-            # Encode categoricals
-            df_processed['gender'] = df_processed['gender'].map({'Male': 0, 'Female': 1})
-            df_processed['contract_type'] = df_processed['contract_type'].map({'Monthly': 0, 'Yearly': 1})
+        # Simple preprocessing
+        df['gender'] = df['gender'].map({'Male': 0, 'Female': 1})
+        df['contract_type'] = df['contract_type'].map({'Monthly': 0, 'Yearly': 1})
         
         # Ensure correct feature order
         if feature_columns:
-            for col in feature_columns:
-                if col not in df_processed.columns:
-                    df_processed[col] = 0
-            df_processed = df_processed[feature_columns]
+            df = df[feature_columns]
         
         # Make prediction
-        prediction = model.predict(df_processed)[0]
-        prediction_proba = model.predict_proba(df_processed)[0]
+        prediction = model.predict(df)[0]
+        prediction_proba = model.predict_proba(df)[0]
         
         return PredictionResponse(
-            customer_id=request.customer_id,
             churn_prediction=int(prediction),
             churn_probability=float(prediction_proba[1]),
             prediction_timestamp=datetime.now().isoformat(),
@@ -188,7 +142,8 @@ async def predict(request: PredictionRequest):
         logger.error(f"Prediction error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.post("/predict/batch", response_model=List[PredictionResponse])
+
+@app.post("/predict/batch", response_model=list)
 async def predict_batch(request: BatchPredictionRequest):
     """Predict churn for multiple customers."""
     if model is None:
@@ -196,32 +151,14 @@ async def predict_batch(request: BatchPredictionRequest):
     
     try:
         predictions = []
-        
         for customer in request.customers:
-            # Create single prediction request
-            pred_request = PredictionRequest(**customer.dict())
-            pred_response = await predict(pred_request)
+            pred_response = await predict(customer)
             predictions.append(pred_response)
-        
         return predictions
-        
     except Exception as e:
         logger.error(f"Batch prediction error: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-@app.get("/metrics")
-async def get_metrics():
-    """Get model performance metrics."""
-    metrics_path = Path("artifacts/reports/best_model_info.json")
-    
-    if not metrics_path.exists():
-        raise HTTPException(status_code=404, detail="Metrics not found")
-    
-    import json
-    with open(metrics_path, 'r') as f:
-        metrics = json.load(f)
-    
-    return JSONResponse(content=metrics)
 
 if __name__ == "__main__":
     import uvicorn
