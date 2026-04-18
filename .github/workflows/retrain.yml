@@ -3,10 +3,10 @@ name: Model Retraining
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 2 * * 0'
+    - cron: '0 2 * * 0'  # Weekly on Sunday at 2 AM
 
 jobs:
-  retrain-pipeline:
+  retrain:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -19,62 +19,33 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       
-      - name: Load current best model
+      - name: Download production model
+        uses: actions/download-artifact@v4
+        with:
+          name: best-model
+          path: artifacts/models/
+        continue-on-error: true
+      
+      - name: Run complete retraining pipeline
         run: |
-          mkdir -p artifacts/models
-          if [ -f "artifacts/models/best_model.pkl" ]; then
-            echo "Current best model exists, will retrain with new data"
-          else
-            echo "No existing model found, will train from scratch"
-          fi
-      
-      - name: Ingest new data
-        run: python src/ingest.py --retraining
-      
-      - name: Validate new data
-        run: python src/validate.py --retraining
-      
-      - name: Preprocess new data
-        run: python src/preprocess.py --retraining
-      
-      - name: Feature engineering
-        run: python src/feature_engineering.py --retraining
-      
-      - name: Retrain models
-        run: |
+          python src/ingest.py --retraining
+          python src/validate.py --retraining
+          python src/preprocess.py --retraining
+          python src/feature_engineering.py --retraining
           python src/train.py --model logistic_regression --retraining
           python src/train.py --model random_forest --retraining
           python src/train.py --model xgboost --retraining
+          python src/evaluate.py --retraining
+          python src/select_model.py --retraining --compare
       
-      - name: Evaluate retrained models
-        run: python src/evaluate.py --retraining
+      - name: Upload retrained model
+        uses: actions/upload-artifact@v4
+        with:
+          name: retrained-model
+          path: artifacts/models/best_model.pkl
       
-      - name: Compare with production model
-        run: python src/select_model.py --retraining --compare
-      
-      - name: Deploy new model if better
+      - name: Retraining summary
         run: |
-          python -c "
-          import json
-          with open('artifacts/reports/model_comparison.json') as f:
-              comparison = json.load(f)
-          if comparison['new_model_better']:
-              print('New model outperforms production, deploying...')
-              with open('artifacts/deploy_flag', 'w') as f:
-                  f.write('deploy')
-          else:
-              print('No significant improvement, skipping deployment')
-          "
-      
-      - name: Update production model
-        if: success()
-        run: |
-          if [ -f "artifacts/deploy_flag" ]; then
-            cp artifacts/models/best_model_new.pkl artifacts/models/best_model.pkl
-            echo "Production model updated"
-          fi
-      
-      - name: Retraining complete
-        run: |
-          echo "Retraining pipeline completed successfully" >> retraining.log
-          date >> retraining.log
+          echo "## Model Retraining Complete" >> $GITHUB_STEP_SUMMARY
+          echo "- Retraining triggered: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "- New model available in artifacts" >> $GITHUB_STEP_SUMMARY
