@@ -17,6 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 class DataPreprocessor:
     """Preprocess data for ML models."""
     
@@ -24,12 +25,18 @@ class DataPreprocessor:
         self.scaler = StandardScaler()
         self.label_encoders = {}
         self.outlier_limits = {}
-        
+    
     def preprocess(self, df: pd.DataFrame, fit: bool = True) -> pd.DataFrame:
         """Apply preprocessing to dataframe."""
         logger.info("Starting data preprocessing")
         
         df_processed = df.copy()
+        
+        # Drop unnecessary columns
+        drop_cols = ['customer_id'] if 'customer_id' in df_processed.columns else []
+        if drop_cols:
+            df_processed = df_processed.drop(columns=drop_cols)
+            logger.info(f"Dropped columns: {drop_cols}")
         
         # Separate features and target
         target_col = 'churn'
@@ -40,53 +47,48 @@ class DataPreprocessor:
             X = df_processed
             y = None
         
-        # Handle outliers in numerical features
+        # Numerical features
         numerical_cols = ['age', 'tenure_months', 'monthly_spend', 
                          'support_tickets', 'last_login_days', 'satisfaction_score']
+        numerical_cols = [col for col in numerical_cols if col in X.columns]
         
+        # Handle outliers in numerical features
         for col in numerical_cols:
-            if col in X.columns:
-                # Cap outliers at 99th percentile
-                if fit:
-                    upper_limit = X[col].quantile(0.99)
-                    lower_limit = X[col].quantile(0.01)
-                    self.outlier_limits[col] = {'upper': upper_limit, 'lower': lower_limit}
-                else:
-                    upper_limit = self.outlier_limits.get(col, {}).get('upper', X[col].quantile(0.99))
-                    lower_limit = self.outlier_limits.get(col, {}).get('lower', X[col].quantile(0.01))
-                
-                X[col] = X[col].clip(lower_limit, upper_limit)
-                logger.info(f"Capped outliers in {col} to [{lower_limit:.2f}, {upper_limit:.2f}]")
+            if fit:
+                upper_limit = X[col].quantile(0.99)
+                lower_limit = X[col].quantile(0.01)
+                self.outlier_limits[col] = {'upper': upper_limit, 'lower': lower_limit}
+            else:
+                upper_limit = self.outlier_limits.get(col, {}).get('upper', X[col].quantile(0.99))
+                lower_limit = self.outlier_limits.get(col, {}).get('lower', X[col].quantile(0.01))
+            
+            X[col] = X[col].clip(lower_limit, upper_limit)
+            logger.info(f"Capped outliers in {col}")
         
         # Encode categorical variables
         categorical_cols = ['gender', 'contract_type']
+        categorical_cols = [col for col in categorical_cols if col in X.columns]
         
         for col in categorical_cols:
-            if col in X.columns:
-                if fit:
-                    le = LabelEncoder()
-                    X[col] = le.fit_transform(X[col].astype(str))
-                    self.label_encoders[col] = le
-                    logger.info(f"Encoded {col} with classes: {le.classes_.tolist()}")
-                else:
-                    le = self.label_encoders.get(col)
-                    if le:
-                        # Handle unknown categories
-                        X[col] = X[col].astype(str)
-                        X[col] = X[col].apply(lambda x: x if x in le.classes_ else le.classes_[0])
-                        X[col] = le.transform(X[col])
-                    else:
-                        logger.warning(f"No encoder found for {col}, skipping")
+            if fit:
+                le = LabelEncoder()
+                X[col] = le.fit_transform(X[col].astype(str))
+                self.label_encoders[col] = le
+                logger.info(f"Encoded {col} with classes: {le.classes_.tolist()}")
+            else:
+                le = self.label_encoders.get(col)
+                if le:
+                    X[col] = X[col].astype(str)
+                    X[col] = X[col].apply(lambda x: x if x in le.classes_ else le.classes_[0])
+                    X[col] = le.transform(X[col])
         
         # Scale numerical features
-        if fit:
-            X_scaled = self.scaler.fit_transform(X[numerical_cols])
-            logger.info(f"Fitted scaler with means: {self.scaler.mean_}")
-        else:
-            X_scaled = self.scaler.transform(X[numerical_cols])
-        
-        # Replace original numerical columns with scaled versions
-        X[numerical_cols] = X_scaled
+        if numerical_cols:
+            if fit:
+                X_scaled = self.scaler.fit_transform(X[numerical_cols])
+            else:
+                X_scaled = self.scaler.transform(X[numerical_cols])
+            X[numerical_cols] = X_scaled
         
         # Log preprocessing info
         logger.info(f"Preprocessed data shape: {X.shape}")
@@ -110,11 +112,15 @@ class DataPreprocessor:
     
     def load_preprocessor(self, path: str = "artifacts/models/preprocessor.pkl"):
         """Load preprocessor objects."""
+        if not Path(path).exists():
+            logger.warning(f"Preprocessor not found at {path}")
+            return
         preprocessor_data = joblib.load(path)
         self.scaler = preprocessor_data['scaler']
         self.label_encoders = preprocessor_data['label_encoders']
         self.outlier_limits = preprocessor_data.get('outlier_limits', {})
         logger.info(f"Preprocessor loaded from {path}")
+
 
 def main():
     """Main preprocessing entry point."""
@@ -136,7 +142,6 @@ def main():
     preprocessor = DataPreprocessor()
     
     if args.retraining and Path("artifacts/models/preprocessor.pkl").exists():
-        # Load existing preprocessor for consistency
         preprocessor.load_preprocessor()
         df_processed = preprocessor.preprocess(df, fit=False)
     else:
@@ -163,6 +168,7 @@ def main():
         json.dump(feature_info, f, indent=2)
     
     logger.info("Preprocessing completed successfully")
+
 
 if __name__ == "__main__":
     main()
