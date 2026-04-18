@@ -15,16 +15,16 @@ jobs:
       cache-hit: ${{ steps.cache.outputs.cache-hit }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
       - name: Cache pip packages
         id: cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
@@ -45,7 +45,7 @@ jobs:
           mkdir -p artifacts/plots
       
       - name: Upload directories
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: project-structure
           path: |
@@ -53,41 +53,49 @@ jobs:
             src/
             config/
           retention-days: 7
+          overwrite: true
 
   ingest-data:
     runs-on: ubuntu-latest
     needs: [setup-environment]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
       - name: Install dependencies
         run: pip install -r requirements.txt
       
+      - name: Download project structure
+        uses: actions/download-artifact@v4
+        with:
+          name: project-structure
+          path: ./
+      
       - name: Run data ingestion
         run: python src/ingest.py
       
       - name: Upload ingested data
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: ingested-data
           path: artifacts/data/
           retention-days: 7
+          overwrite: true
 
   validate-data:
     runs-on: ubuntu-latest
     needs: [ingest-data]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
@@ -95,7 +103,7 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download ingested data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: ingested-data
           path: artifacts/data/
@@ -104,21 +112,22 @@ jobs:
         run: python src/validate.py
       
       - name: Upload validation report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: validation-report
           path: artifacts/reports/validation_report.json
           retention-days: 7
+          overwrite: true
 
   preprocess-data:
     runs-on: ubuntu-latest
     needs: [validate-data]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
@@ -126,7 +135,7 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download ingested data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: ingested-data
           path: artifacts/data/
@@ -135,21 +144,22 @@ jobs:
         run: python src/preprocess.py
       
       - name: Upload preprocessed data
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: preprocessed-data
           path: artifacts/data/preprocessed_data.pkl
           retention-days: 7
+          overwrite: true
 
   feature-engineering:
     runs-on: ubuntu-latest
     needs: [preprocess-data]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
@@ -157,7 +167,7 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download preprocessed data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: preprocessed-data
           path: artifacts/data/
@@ -166,11 +176,12 @@ jobs:
         run: python src/feature_engineering.py
       
       - name: Upload features
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: engineered-features
           path: artifacts/data/features.pkl
           retention-days: 7
+          overwrite: true
 
   train-models:
     runs-on: ubuntu-latest
@@ -180,10 +191,10 @@ jobs:
         model: [logistic_regression, random_forest, xgboost]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
@@ -191,7 +202,7 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download features
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: engineered-features
           path: artifacts/data/
@@ -200,28 +211,30 @@ jobs:
         run: python src/train.py --model ${{ matrix.model }}
       
       - name: Upload ${{ matrix.model }} model
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: model-${{ matrix.model }}
           path: artifacts/models/${{ matrix.model }}.pkl
           retention-days: 7
+          overwrite: true
       
       - name: Upload ${{ matrix.model }} metrics
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: metrics-${{ matrix.model }}
           path: artifacts/metrics/${{ matrix.model }}_metrics.json
           retention-days: 7
+          overwrite: true
 
   evaluate-models:
     runs-on: ubuntu-latest
     needs: [train-models]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
@@ -229,29 +242,39 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download all models
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          path: artifacts/
+          pattern: model-*
+          path: artifacts/models/
+          merge-multiple: true
+      
+      - name: Download all metrics
+        uses: actions/download-artifact@v4
+        with:
+          pattern: metrics-*
+          path: artifacts/metrics/
+          merge-multiple: true
       
       - name: Run evaluation
         run: python src/evaluate.py
       
       - name: Upload evaluation report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: evaluation-report
           path: artifacts/reports/evaluation_report.json
           retention-days: 7
+          overwrite: true
 
   select-best-model:
     runs-on: ubuntu-latest
     needs: [evaluate-models]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
@@ -259,7 +282,7 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download evaluation report
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: evaluation-report
           path: artifacts/reports/
@@ -268,21 +291,22 @@ jobs:
         run: python src/select_model.py
       
       - name: Upload best model info
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: best-model-info
           path: artifacts/models/best_model_info.json
           retention-days: 7
+          overwrite: true
 
   save-artifacts:
     runs-on: ubuntu-latest
     needs: [select-best-model]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
@@ -290,13 +314,14 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download best model
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: model-*
+          pattern: model-*
           path: artifacts/models/
+          merge-multiple: true
       
       - name: Download best model info
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: best-model-info
           path: artifacts/models/
@@ -305,7 +330,7 @@ jobs:
         run: python src/save_model.py
       
       - name: Upload final artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: final-artifacts
           path: |
@@ -313,37 +338,36 @@ jobs:
             artifacts/models/final_preprocessor.pkl
             artifacts/models/model_metadata.json
           retention-days: 30
+          overwrite: true
 
   generate-reports:
     runs-on: ubuntu-latest
     needs: [evaluate-models, select-best-model]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt matplotlib seaborn
       
       - name: Download all metrics
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          path: artifacts/
+          pattern: metrics-*
+          path: artifacts/metrics/
+          merge-multiple: true
       
       - name: Generate reports and plots
         run: |
           python -c "
-          import json
-          import matplotlib.pyplot as plt
-          import seaborn as sns
-          import pandas as pd
-          import numpy as np
+          import json, matplotlib.pyplot as plt, seaborn as sns, pandas as pd, numpy as np, os
+          os.makedirs('artifacts/plots', exist_ok=True)
           
-          # Generate performance comparison plot
           models = ['logistic_regression', 'random_forest', 'xgboost']
           metrics_data = {}
           
@@ -351,8 +375,7 @@ jobs:
               try:
                   with open(f'artifacts/metrics/{model}_metrics.json', 'r') as f:
                       metrics_data[model] = json.load(f)
-              except:
-                  pass
+              except: pass
           
           if metrics_data:
               fig, axes = plt.subplots(2, 2, figsize=(12, 10))
@@ -364,17 +387,15 @@ jobs:
                   ax.bar([m for m in models if m in metrics_data], values)
                   ax.set_title(f'{metric.upper()} Comparison')
                   ax.set_ylim([0, 1])
-                  ax.set_ylabel('Score')
                   ax.tick_params(axis='x', rotation=45)
               
               plt.tight_layout()
               plt.savefig('artifacts/plots/model_comparison.png', dpi=100, bbox_inches='tight')
               plt.close()
               
-              # Generate metrics heatmap
               metrics_df = pd.DataFrame(metrics_data).T
               plt.figure(figsize=(10, 6))
-              sns.heatmap(metrics_df, annot=True, cmap='YlOrRd', fmt='.3f', cbar_kws={'label': 'Score'})
+              sns.heatmap(metrics_df, annot=True, cmap='YlOrRd', fmt='.3f')
               plt.title('Model Performance Heatmap')
               plt.tight_layout()
               plt.savefig('artifacts/plots/performance_heatmap.png', dpi=100)
@@ -382,20 +403,21 @@ jobs:
           "
       
       - name: Upload reports and plots
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: reports-and-plots
           path: |
             artifacts/plots/
             artifacts/reports/
           retention-days: 30
+          overwrite: true
 
   upload-artifacts:
     runs-on: ubuntu-latest
     needs: [generate-reports, save-artifacts]
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           path: all-artifacts/
       
@@ -406,36 +428,36 @@ jobs:
           mkdir -p final_artifacts/metrics
           mkdir -p final_artifacts/reports
           
-          cp -r all-artifacts/final-artifacts/* final_artifacts/models/ 2>/dev/null || true
-          cp -r all-artifacts/reports-and-plots/plots/* final_artifacts/plots/ 2>/dev/null || true
-          cp -r all-artifacts/reports-and-plots/artifacts/reports/* final_artifacts/reports/ 2>/dev/null || true
-          cp -r all-artifacts/evaluation-report/* final_artifacts/reports/ 2>/dev/null || true
+          find all-artifacts -name "final_model.pkl" -exec cp {} final_artifacts/models/ \; 2>/dev/null || true
+          find all-artifacts -name "*.png" -exec cp {} final_artifacts/plots/ \; 2>/dev/null || true
+          find all-artifacts -name "*.json" -path "*/reports/*" -exec cp {} final_artifacts/reports/ \; 2>/dev/null || true
+          find all-artifacts -name "*_metrics.json" -exec cp {} final_artifacts/metrics/ \; 2>/dev/null || true
           
-          # Create artifact manifest
-          echo "{\"timestamp\": \"$(date -Iseconds)\", \"artifacts\": $(ls -R final_artifacts | jq -R -s -c split(\"\\n\"))}" > final_artifacts/manifest.json
+          echo "{\"timestamp\": \"$(date -Iseconds)\"}" > final_artifacts/manifest.json
       
-      - name: Upload to GitHub Release
-        uses: actions/upload-artifact@v3
+      - name: Upload complete artifacts
+        uses: actions/upload-artifact@v4
         with:
           name: complete-pipeline-artifacts
           path: final_artifacts/
           retention-days: 90
+          overwrite: true
 
   build-docker-image:
     runs-on: ubuntu-latest
     needs: [save-artifacts]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Download final model
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: final-artifacts
           path: artifacts/
       
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
       
       - name: Build Docker image
         run: |
@@ -443,18 +465,19 @@ jobs:
           docker save ml-company-api:latest | gzip > ml-company-api.tar.gz
       
       - name: Upload Docker image
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: docker-image
           path: ml-company-api.tar.gz
           retention-days: 7
+          overwrite: true
 
   deploy-api:
     runs-on: ubuntu-latest
     needs: [build-docker-image]
     steps:
       - name: Download Docker image
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: docker-image
       
@@ -470,26 +493,16 @@ jobs:
       - name: Verify API is running
         run: |
           curl -f http://localhost:8000/health || exit 1
-      
-      - name: Save container state for testing
-        run: docker commit ml-api ml-api-running
-      
-      - name: Upload running container info
-        uses: actions/upload-artifact@v3
-        with:
-          name: running-api
-          path: /var/run/docker.sock
-          retention-days: 1
 
   test-api:
     runs-on: ubuntu-latest
     needs: [deploy-api]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
@@ -497,11 +510,6 @@ jobs:
         run: |
           pip install pytest httpx
           pip install -r requirements.txt
-      
-      - name: Download running API info
-        uses: actions/download-artifact@v3
-        with:
-          name: running-api
       
       - name: Run API tests
         run: |
@@ -511,13 +519,14 @@ jobs:
       
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: api-test-results
           path: |
             test_results.xml
             pytest_output.txt
           retention-days: 7
+          overwrite: true
 
   drift-detection:
     runs-on: ubuntu-latest
@@ -525,10 +534,10 @@ jobs:
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
       
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
       
@@ -536,13 +545,13 @@ jobs:
         run: pip install -r requirements.txt
       
       - name: Download reference data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: engineered-features
           path: reference_data/
       
       - name: Download current data
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: ingested-data
           path: current_data/
@@ -551,22 +560,19 @@ jobs:
         run: python src/drift.py
       
       - name: Upload drift report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: drift-report
           path: artifacts/reports/drift_report.json
           retention-days: 30
+          overwrite: true
       
       - name: Check if retraining needed
         id: check_drift
         run: |
           if [ -f artifacts/reports/drift_report.json ]; then
             DRIFT_SCORE=$(python -c "import json; data=json.load(open('artifacts/reports/drift_report.json')); print(data.get('drift_detected', False))")
-            if [ "$DRIFT_SCORE" = "True" ]; then
-              echo "retrain_needed=true" >> $GITHUB_OUTPUT
-            else
-              echo "retrain_needed=false" >> $GITHUB_OUTPUT
-            fi
+            echo "retrain_needed=$DRIFT_SCORE" >> $GITHUB_OUTPUT
           fi
 
   retrain-trigger:
@@ -575,7 +581,7 @@ jobs:
     if: needs.drift-detection.outputs.retrain_needed == 'true'
     steps:
       - name: Trigger retraining workflow
-        uses: actions/github-script@v6
+        uses: actions/github-script@v7
         with:
           script: |
             await github.rest.actions.createWorkflowDispatch({
@@ -593,10 +599,11 @@ jobs:
           echo "Retraining triggered due to data drift at $(date)" >> artifacts/reports/retraining_log.txt
       
       - name: Upload retraining log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: retraining-log
           path: artifacts/reports/retraining_log.txt
+          overwrite: true
 
   notify:
     runs-on: ubuntu-latest
@@ -629,13 +636,7 @@ jobs:
           - ${{ needs.drift-detection.result == 'success' && '✅' || '⚠️' }} Drift Detection
           
           ## Model Performance
-          Best Model: $(cat artifacts/models/best_model_info.json 2>/dev/null | jq -r '.best_model' || echo "N/A")
-          Best F1 Score: $(cat artifacts/models/best_model_info.json 2>/dev/null | jq -r '.metrics.f1_score' || echo "N/A")
-          
-          ## Artifacts
-          - Models saved in artifacts/models/
-          - Reports in artifacts/reports/
-          - Plots in artifacts/plots/
+          Best Model: $(find artifacts -name "best_model_info.json" -exec cat {} \; 2>/dev/null | jq -r '.best_model' || echo "N/A")
           
           View full details: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EOF
@@ -645,10 +646,10 @@ jobs:
       - name: Log completion
         run: |
           echo "Pipeline completed successfully at $(date)" >> pipeline_completion.log
-          echo "All jobs executed as expected"
       
       - name: Upload completion log
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pipeline-completion
           path: pipeline_completion.log
+          overwrite: true
