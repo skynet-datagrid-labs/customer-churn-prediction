@@ -241,6 +241,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       
+      - name: Download engineered features
+        uses: actions/download-artifact@v4
+        with:
+          name: engineered-features
+          path: artifacts/data/
+      
       - name: Download all models
         uses: actions/download-artifact@v4
         with:
@@ -255,10 +261,22 @@ jobs:
           path: artifacts/metrics/
           merge-multiple: true
       
+      - name: Debug - List downloaded files
+        run: |
+          echo "=== Directory Structure ==="
+          ls -la
+          echo "=== artifacts/ ==="
+          ls -la artifacts/ 2>/dev/null || echo "artifacts/ not found"
+          echo "=== artifacts/data/ ==="
+          ls -la artifacts/data/ 2>/dev/null || echo "artifacts/data/ not found"
+          echo "=== artifacts/models/ ==="
+          ls -la artifacts/models/ 2>/dev/null || echo "artifacts/models/ not found"
+      
       - name: Run evaluation
         run: python src/evaluate.py
       
       - name: Upload evaluation report
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: evaluation-report
