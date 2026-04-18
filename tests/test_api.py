@@ -2,18 +2,22 @@ import pytest
 import httpx
 import asyncio
 from typing import Dict, Any
+import os
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = os.getenv("API_URL", "http://localhost:8000")
 
 @pytest.mark.asyncio
 async def test_health_endpoint():
     """Test health check endpoint"""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/health")
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "healthy"
-        assert "model_loaded" in data
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{BASE_URL}/health")
+            assert response.status_code == 200
+            data = response.json()
+            assert data["status"] == "healthy"
+            assert "model_loaded" in data
+    except httpx.ConnectError:
+        pytest.skip(f"API server not running at {BASE_URL}")
 
 @pytest.mark.asyncio
 async def test_prediction_endpoint():
@@ -30,14 +34,17 @@ async def test_prediction_endpoint():
         "satisfaction_score": 7
     }
     
-    async with httpx.AsyncClient() as client:
-        response = await client.post(f"{BASE_URL}/predict", json=test_data)
-        assert response.status_code == 200
-        data = response.json()
-        assert data["customer_id"] == test_data["customer_id"]
-        assert "churn_prediction" in data
-        assert "churn_probability" in data
-        assert 0 <= data["churn_probability"] <= 1
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(f"{BASE_URL}/predict", json=test_data)
+            assert response.status_code == 200
+            data = response.json()
+            assert data["customer_id"] == test_data["customer_id"]
+            assert "churn_prediction" in data
+            assert "churn_probability" in data
+            assert 0 <= data["churn_probability"] <= 1
+    except httpx.ConnectError:
+        pytest.skip(f"API server not running at {BASE_URL}")
 
 @pytest.mark.asyncio
 async def test_batch_prediction():
@@ -69,23 +76,29 @@ async def test_batch_prediction():
         ]
     }
     
-    async with httpx.AsyncClient() as client:
-        response = await client.post(f"{BASE_URL}/predict/batch", json=test_batch)
-        assert response.status_code == 200
-        data = response.json()
-        assert len(data) == 2
-        assert data[0]["customer_id"] == 1001
-        assert data[1]["customer_id"] == 1002
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(f"{BASE_URL}/predict/batch", json=test_batch)
+            assert response.status_code == 200
+            data = response.json()
+            assert len(data) == 2
+            assert data[0]["customer_id"] == 1001
+            assert data[1]["customer_id"] == 1002
+    except httpx.ConnectError:
+        pytest.skip(f"API server not running at {BASE_URL}")
 
 @pytest.mark.asyncio
 async def test_model_info():
     """Test model info endpoint"""
-    async with httpx.AsyncClient() as client:
-        response = await client.get(f"{BASE_URL}/model/info")
-        assert response.status_code == 200
-        data = response.json()
-        assert "model_type" in data
-        assert "feature_count" in data
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.get(f"{BASE_URL}/model/info")
+            assert response.status_code == 200
+            data = response.json()
+            assert "model_type" in data
+            assert "feature_count" in data
+    except httpx.ConnectError:
+        pytest.skip(f"API server not running at {BASE_URL}")
 
 @pytest.mark.asyncio
 async def test_invalid_prediction():
@@ -102,10 +115,13 @@ async def test_invalid_prediction():
         "satisfaction_score": 20  # Invalid score
     }
     
-    async with httpx.AsyncClient() as client:
-        response = await client.post(f"{BASE_URL}/predict", json=invalid_data)
-        # Should return validation error
-        assert response.status_code == 422
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(f"{BASE_URL}/predict", json=invalid_data)
+            # Should return validation error
+            assert response.status_code == 422
+    except httpx.ConnectError:
+        pytest.skip(f"API server not running at {BASE_URL}")
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
