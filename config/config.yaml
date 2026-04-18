@@ -8,25 +8,44 @@ data:
       min: 18
       max: 100
       required: true
+      dtype: int
     tenure_months:
       min: 0
       max: 120
       required: true
+      dtype: int
     monthly_spend:
       min: 0
       max: 1000
       required: true
+      dtype: float
     support_tickets:
       min: 0
       max: 50
       required: true
+      dtype: int
+    last_login_days:
+      min: 0
+      max: 365
+      required: true
+      dtype: int
     satisfaction_score:
       min: 1
       max: 10
       required: true
+      dtype: int
+    gender:
+      allowed_values: ["Male", "Female"]
+      required: true
+      dtype: object
+    contract_type:
+      allowed_values: ["Monthly", "Yearly"]
+      required: true
+      dtype: object
     churn:
       allowed_values: [0, 1]
       required: true
+      dtype: int
 
 models:
   logistic_regression:
@@ -35,14 +54,16 @@ models:
       C: [0.1, 1.0, 10.0]
       max_iter: 1000
       random_state: 42
+      class_weight: "balanced"
   
   random_forest:
     enabled: true
     params:
       n_estimators: [100, 200]
-      max_depth: [10, 20, None]
+      max_depth: [10, 20, null]
       min_samples_split: [2, 5, 10]
       random_state: 42
+      class_weight: "balanced"
   
   xgboost:
     enabled: true
@@ -51,6 +72,7 @@ models:
       max_depth: [3, 6, 9]
       learning_rate: [0.01, 0.1, 0.3]
       random_state: 42
+      scale_pos_weight: null  # Will be calculated automatically
 
 training:
   test_size: 0.2
@@ -73,6 +95,8 @@ features:
     - contract_type
   
   target: churn
+  drop_columns:
+    - customer_id
 
 monitoring:
   drift_threshold: 0.2
@@ -87,6 +111,8 @@ api:
   workers: 4
   rate_limit: "100/minute"
   timeout: 30
+  model_path: "artifacts/models/best_model.pkl"
+  preprocessor_path: "artifacts/models/preprocessor.pkl"
 
 deployment:
   docker_registry: "ghcr.io"
