@@ -12,3 +12,5 @@ pydantic==2.10.4
 httpx==0.28.1
 pytest==8.3.4
 pytest-asyncio==0.24.0
+pyyaml==6.0.2
+scipy==1.13.1

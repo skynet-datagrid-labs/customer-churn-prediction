@@ -54,7 +54,8 @@ evaluation:
     - accuracy
     - precision
     - recall
-    - f1_score
+    - f1
+    - roc_auc
   cv_folds: 5
   
 drift_detection:
@@ -69,7 +70,18 @@ api:
   workers: 2
   
 artifacts:
-  model_path: "artifacts/models/"
-  report_path: "artifacts/reports/"
-  metrics_path: "artifacts/metrics/"
-  plots_path: "artifacts/plots/"
+  raw_data: "artifacts/raw_data.pkl"
+  X_train: "artifacts/X_train.pkl"
+  X_test: "artifacts/X_test.pkl"
+  y_train: "artifacts/y_train.pkl"
+  y_test: "artifacts/y_test.pkl"
+  X_train_fe: "artifacts/X_train_fe.pkl"
+  X_test_fe: "artifacts/X_test_fe.pkl"
+  encoders: "artifacts/encoders.pkl"
+  scaler: "artifacts/scaler.pkl"
+  feature_names: "artifacts/feature_names.pkl"
+  fe_params: "artifacts/fe_params.pkl"
+  model: "artifacts/model.pkl"
+  metrics: "artifacts/metrics.json"
+  best_model: "artifacts/best_model.json"
+  drift_report: "reports/drift_report.json"

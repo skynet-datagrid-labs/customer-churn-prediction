@@ -135,7 +135,7 @@ class DriftDetector:
         
         return overall_assessment
     
-    def save_drift_report(self, output_path="artifacts/reports/drift_report.json"):
+    def save_drift_report(self, output_path="reports/drift_report.json"):
         """Save drift detection report"""
         Path(output_path).parent.mkdir(parents=True, exist_ok=True)
         

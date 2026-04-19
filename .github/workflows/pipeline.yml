@@ -325,29 +325,31 @@ jobs:
       - run: docker build -t ml-churn-predictor:latest .
       - run: docker images | grep ml-churn-predictor
 
-  deploy-api:
+  deploy-and-test-api:
     needs: build-docker-image
-    runs-on: ubuntu-latest
-    steps:
-      - run: docker run -d -p 8000:8000 --name ml-api ml-churn-predictor:latest
-      - run: sleep 15
-      - run: curl -f http://localhost:8000/health || exit 1
-
-  test-api:
-    needs: deploy-api
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: production-artifacts
+          path: .
       - run: pip install -r requirements.txt
+      - run: docker build -t ml-churn-predictor:latest .
+      - run: docker run -d -p 8000:8000 --name ml-api ml-churn-predictor:latest
+      - run: sleep 15
+      - run: curl -f http://localhost:8000/health || exit 1
       - run: pytest tests/test_api.py -v
       - run: docker stop ml-api
 
   drift-detection:
-    needs: test-api
+    needs: deploy-and-test-api
     runs-on: ubuntu-latest
+    outputs:
+      drift_detected: ${{ steps.set-output.outputs.drift_detected }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -361,25 +363,31 @@ jobs:
       - id: drift
         run: python scripts/drift_detection.py
         continue-on-error: true
+      - id: set-output
+        run: |
+          if [ "${{ steps.drift.outcome }}" == "failure" ]; then
+            echo "drift_detected=true" >> $GITHUB_OUTPUT
+          else
+            echo "drift_detected=false" >> $GITHUB_OUTPUT
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: drift-report
           path: reports/drift_report.json
-      - name: Trigger retrain if drift detected
-        if: steps.drift.outcome == 'failure'
-        run: |
-          echo "DRIFT_DETECTED=true" >> $GITHUB_ENV
 
   retrain-trigger:
     needs: drift-detection
-    if: env.DRIFT_DETECTED == 'true'
+    if: needs.drift-detection.outputs.drift_detected == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - run: echo "Retraining triggered - would call gh workflow run retrain.yml"
 
   notify:
-    needs: [deploy-api, test-api, drift-detection]
+    needs: [deploy-and-test-api, drift-detection]
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - run: |
           echo "Pipeline completed successfully"

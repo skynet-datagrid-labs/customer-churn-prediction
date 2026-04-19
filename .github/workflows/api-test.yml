@@ -23,7 +23,7 @@ jobs:
           key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
       - run: pip install -r requirements.txt
 
-  build-docker-image:
+  deploy-and-test-api:
     needs: setup-environment
     runs-on: ubuntu-latest
     steps:
@@ -34,7 +34,6 @@ jobs:
       - run: pip install -r requirements.txt
       - run: |
           mkdir -p artifacts
-          echo "Creating dummy artifacts for testing"
           python scripts/generate_data.py
           python src/ingest.py data/fictitious_company_data.xlsx
           python src/validate.py
@@ -45,23 +44,8 @@ jobs:
           python src/select_model.py
           python src/save_model.py
       - run: docker build -t ml-churn-predictor:test .
-
-  deploy-api:
-    needs: build-docker-image
-    runs-on: ubuntu-latest
-    steps:
       - run: docker run -d -p 8000:8000 --name ml-api-test ml-churn-predictor:test
       - run: sleep 15
       - run: curl -f http://localhost:8000/health || exit 1
-
-  test-api:
-    needs: deploy-api
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-      - run: pip install -r requirements.txt
       - run: pytest tests/test_api.py -v
       - run: docker stop ml-api-test
