@@ -2,85 +2,256 @@ name: Scheduled Retraining
 
 on:
   schedule:
-    - cron: '0 0 * * 0'
+    - cron: '0 2 * * 0'
   workflow_dispatch:
-    inputs:
-      reason:
-        description: 'Reason for retraining'
-        required: false
-        default: 'Manual trigger'
+
+env:
+  PYTHON_VERSION: "3.12"
 
 jobs:
-  retrain-pipeline:
+  generate-data:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
-      
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      
-      - name: Download latest data
-        run: |
-          python -c "
-          import pandas as pd
-          import numpy as np
-          
-          np.random.seed(42)
-          n_samples = 500
-          
-          data = {
-              'customer_id': range(1000, 1000 + n_samples),
-              'age': np.random.normal(45, 15, n_samples).clip(18, 80).astype(int),
-              'gender': np.random.choice(['Male', 'Female'], n_samples),
-              'tenure_months': np.random.exponential(30, n_samples).clip(1, 72).astype(int),
-              'monthly_spend': np.random.gamma(5, 50, n_samples).clip(10, 800),
-              'contract_type': np.random.choice(['Monthly', 'Yearly'], n_samples, p=[0.6, 0.4]),
-              'support_tickets': np.random.poisson(3, n_samples).clip(0, 15),
-              'last_login_days': np.random.uniform(0, 60, n_samples).astype(int),
-              'satisfaction_score': np.random.choice(range(1, 11), n_samples),
-              'churn': np.random.binomial(1, 0.3, n_samples)
-          }
-          
-          df = pd.DataFrame(data)
-          df.to_excel('data/fictitious_company_data.xlsx', index=False)
-          print(f'Generated {n_samples} new samples')
-          "
-      
-      - name: Run full pipeline
-        run: |
-          python src/ingest.py
-          python src/validate.py
-          python src/preprocess.py
-          python src/feature_engineering.py
-          python src/train.py --model logistic_regression
-          python src/train.py --model random_forest
-          python src/train.py --model xgboost
-          python src/evaluate.py
-          python src/select_model.py
-          python src/save_model.py
-      
-      - name: Upload retrained model
-        uses: actions/upload-artifact@v4
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements.txt
+      - run: python scripts/generate_data.py
+      - uses: actions/upload-artifact@v4
         with:
-          name: retrained-model-${{ github.run_id }}
-          path: artifacts/models/final_model.pkl
-          retention-days: 90
-          overwrite: true
-      
-      - name: Log retraining completion
-        run: |
-          echo "Retraining completed at $(date)" >> retraining_history.log
-          echo "Reason: ${{ github.event.inputs.reason || 'Scheduled retraining' }}" >> retraining_history.log
-      
-      - name: Upload retraining history
-        uses: actions/upload-artifact@v4
+          name: data
+          path: data/
+
+  ingest-data:
+    needs: generate-data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          name: retraining-history
-          path: retraining_history.log
-          overwrite: true
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: data
+          path: data/
+      - run: pip install -r requirements.txt
+      - run: python src/ingest.py data/fictitious_company_data.xlsx
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raw-data
+          path: artifacts/raw_data.pkl
+
+  validate-data:
+    needs: ingest-data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: raw-data
+          path: artifacts/
+      - run: pip install -r requirements.txt
+      - run: python src/validate.py
+
+  preprocess-data:
+    needs: validate-data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: raw-data
+          path: artifacts/
+      - run: pip install -r requirements.txt
+      - run: python src/preprocess.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: preprocessed-data
+          path: |
+            artifacts/X_train.pkl
+            artifacts/X_test.pkl
+            artifacts/y_train.pkl
+            artifacts/y_test.pkl
+            artifacts/encoders.pkl
+
+  feature-engineering:
+    needs: preprocess-data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: preprocessed-data
+          path: artifacts/
+      - run: pip install -r requirements.txt
+      - run: python src/feature_engineering.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: feature-data
+          path: |
+            artifacts/X_train_fe.pkl
+            artifacts/X_test_fe.pkl
+            artifacts/scaler.pkl
+
+  train-logistic-regression:
+    needs: feature-engineering
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: feature-data
+          path: artifacts/
+      - run: pip install -r requirements.txt
+      - run: python src/train.py logistic_regression
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-lr
+          path: artifacts/model_logistic_regression.pkl
+
+  train-random-forest:
+    needs: feature-engineering
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: feature-data
+          path: artifacts/
+      - run: pip install -r requirements.txt
+      - run: python src/train.py random_forest
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-rf
+          path: artifacts/model_random_forest.pkl
+
+  train-xgboost:
+    needs: feature-engineering
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: feature-data
+          path: artifacts/
+      - run: pip install -r requirements.txt
+      - run: python src/train.py xgboost
+      - uses: actions/upload-artifact@v4
+        with:
+          name: model-xgb
+          path: artifacts/model_xgboost.pkl
+
+  evaluate-models:
+    needs: [train-logistic-regression, train-random-forest, train-xgboost]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: feature-data
+          path: artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          name: model-lr
+          path: artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          name: model-rf
+          path: artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          name: model-xgb
+          path: artifacts/
+      - run: pip install -r requirements.txt
+      - run: |
+          python src/evaluate.py logistic_regression
+          python src/evaluate.py random_forest
+          python src/evaluate.py xgboost
+      - uses: actions/upload-artifact@v4
+        with:
+          name: metrics
+          path: artifacts/metrics_*.json
+
+  select-best-model:
+    needs: evaluate-models
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: metrics
+          path: artifacts/
+      - run: pip install -r requirements.txt
+      - run: python src/select_model.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: best-model-info
+          path: artifacts/best_model.json
+
+  save-artifacts:
+    needs: [select-best-model, feature-engineering]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: best-model-info
+          path: artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          name: feature-data
+          path: artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          name: metrics
+          path: artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          name: model-lr
+          path: artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          name: model-rf
+          path: artifacts/
+      - uses: actions/download-artifact@v4
+        with:
+          name: model-xgb
+          path: artifacts/
+      - run: pip install -r requirements.txt
+      - run: python src/save_model.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: final-artifacts
+          path: |
+            artifacts/model.pkl
+            artifacts/metrics.json
+            reports/
+          retention-days: 30
