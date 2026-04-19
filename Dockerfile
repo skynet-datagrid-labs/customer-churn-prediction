@@ -17,25 +17,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY api/ ./api/
 COPY src/ ./src/
 COPY config/ ./config/
+COPY create_dummy_model.py .
 
 # Create necessary directories
 RUN mkdir -p artifacts/models artifacts/reports artifacts/metrics artifacts/plots
 
-# Create a dummy model if none exists (for testing)
-RUN python -c "import pickle; from sklearn.ensemble import RandomForestClassifier; import numpy as np; import os; import json; os.makedirs('artifacts/models', exist_ok=True); \
-    try: \
-        with open('artifacts/models/final_model.pkl', 'rb') as f: pass \
-    except: \
-        print('Creating dummy model for testing...'); \
-        dummy_model = RandomForestClassifier(n_estimators=10, random_state=42); \
-        X_dummy = np.random.rand(100, 15); \
-        y_dummy = np.random.randint(0, 2, 100); \
-        dummy_model.fit(X_dummy, y_dummy); \
-        with open('artifacts/models/final_model.pkl', 'wb') as f: pickle.dump(dummy_model, f); \
-        dummy_scaler = {'scaler': None, 'label_encoders': {}}; \
-        with open('artifacts/models/final_preprocessor.pkl', 'wb') as f: pickle.dump(dummy_scaler, f); \
-        feature_cols = {'feature_columns': ['age', 'tenure_months', 'monthly_spend', 'support_tickets', 'last_login_days', 'satisfaction_score', 'gender', 'contract_type']}; \
-        with open('artifacts/models/feature_columns.json', 'w') as f: json.dump(feature_cols, f)"
+# Create dummy model
+RUN python create_dummy_model.py
 
 # Expose port
 EXPOSE 8000
