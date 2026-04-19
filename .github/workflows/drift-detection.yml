@@ -1,99 +1,65 @@
-name: Drift Detection
+name: Daily Drift Detection
 
 on:
   schedule:
-    - cron: '0 */12 * * *'
+    - cron: '0 6 * * *'
   workflow_dispatch:
 
+env:
+  PYTHON_VERSION: "3.12"
+
 jobs:
-  detect-drift:
+  setup-environment:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
-      
-      - name: Install dependencies
-        run: pip install -r requirements.txt
-      
-      - name: Generate baseline data
-        run: |
-          python -c "
-          import pandas as pd
-          import numpy as np
-          
-          np.random.seed(42)
-          baseline_data = pd.DataFrame({
-              'age': np.random.normal(45, 15, 1000),
-              'tenure_months': np.random.exponential(30, 1000),
-              'monthly_spend': np.random.gamma(5, 50, 1000),
-              'support_tickets': np.random.poisson(3, 1000),
-              'last_login_days': np.random.uniform(0, 60, 1000),
-              'satisfaction_score': np.random.choice(range(1, 11), 1000)
-          })
-          baseline_data.to_csv('baseline_data.csv', index=False)
-          print('Baseline data created')
-          "
-      
-      - name: Generate current data
-        run: |
-          python -c "
-          import pandas as pd
-          import numpy as np
-          
-          np.random.seed(42)
-          drift_amount = 0.15
-          current_data = pd.DataFrame({
-              'age': np.random.normal(45 + drift_amount*10, 15, 1000),
-              'tenure_months': np.random.exponential(30 * (1 + drift_amount), 1000),
-              'monthly_spend': np.random.gamma(5, 50 * (1 + drift_amount*0.5), 1000),
-              'support_tickets': np.random.poisson(3 + drift_amount*2, 1000),
-              'last_login_days': np.random.uniform(0, 60 * (1 - drift_amount*0.3), 1000),
-              'satisfaction_score': np.random.choice(range(1, 11), 1000)
-          })
-          current_data.to_csv('current_data.csv', index=False)
-          print('Current data created')
-          "
-      
-      - name: Run drift detection
-        run: python src/drift.py
-      
-      - name: Check drift results
-        id: drift_check
-        run: |
-          if [ -f artifacts/reports/drift_report.json ]; then
-            DRIFT_SCORE=$(python -c "import json; d=json.load(open('artifacts/reports/drift_report.json')); print(d.get('drift_detected', False))")
-            echo "drift_detected=$DRIFT_SCORE" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: Create drift alert
-        if: steps.drift_check.outputs.drift_detected == 'True'
-        run: |
-          cat > drift_alert.md << EOF
-          # 🚨 Data Drift Alert
-          
-          **Detection Time:** $(date)
-          **Severity:** Medium-High
-          
-          ## Recommended Actions
-          1. Trigger retraining pipeline
-          2. Review feature importance
-          
-          View detailed report in artifacts/reports/drift_report.json
-          EOF
-          
-          cat drift_alert.md >> $GITHUB_STEP_SUMMARY
-      
-      - name: Upload drift report
-        uses: actions/upload-artifact@v4
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/cache@v4
         with:
-          name: drift-detection-report
-          path: |
-            artifacts/reports/drift_report.json
-            drift_alert.md
-          retention-days: 30
-          overwrite: true
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+      - run: pip install -r requirements.txt
+
+  ingest-data:
+    needs: setup-environment
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - run: pip install -r requirements.txt
+      - run: python scripts/generate_data.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: raw-data
+          path: artifacts/raw_data.pkl
+          retention-days: 7
+
+  drift-check:
+    needs: ingest-data
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: raw-data
+          path: artifacts/
+      - run: pip install -r requirements.txt
+      - id: drift
+        run: python scripts/drift_detection.py
+        continue-on-error: true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: drift-report
+          path: reports/drift_report.json
+      - name: Trigger retrain if drift detected
+        if: steps.drift.outcome == 'failure'
+        run: |
+          echo "DRIFT_DETECTED=true" >> $GITHUB_ENV
+          echo "Would trigger retrain.yml workflow here"
