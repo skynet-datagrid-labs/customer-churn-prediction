@@ -1,170 +1,94 @@
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from fastapi.middleware.cors import CORSMiddleware
+import joblib
 import pandas as pd
 import numpy as np
-import pickle
-import os
-from typing import List, Dict, Any
-from datetime import datetime
+import time
 import logging
+from contextlib import asynccontextmanager
+from api.schemas import PredictRequest, PredictResponse, HealthResponse
 
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="ML Company Churn Prediction API", version="1.0.0")
-
-# Load models and artifacts
-MODEL_PATH = "artifacts/models/final_model.pkl"
-PREPROCESSOR_PATH = "artifacts/models/final_preprocessor.pkl"
-FEATURES_PATH = "artifacts/models/feature_columns.json"
-
-class PredictionRequest(BaseModel):
-    customer_id: int
-    age: int
-    gender: str
-    tenure_months: int
-    monthly_spend: float
-    contract_type: str
-    support_tickets: int
-    last_login_days: int
-    satisfaction_score: int
-
-class PredictionResponse(BaseModel):
-    customer_id: int
-    churn_prediction: int
-    churn_probability: float
-    prediction_timestamp: str
-    model_version: str
-
-class BatchPredictionRequest(BaseModel):
-    customers: List[PredictionRequest]
-
-class HealthResponse(BaseModel):
-    status: str
-    model_loaded: bool
-    timestamp: str
-
-# Global variables
+# Global variables for loaded artifacts
 model = None
-preprocessor = None
-feature_columns = None
+scaler = None
+encoders = None
 
-@app.on_event("startup")
-async def load_artifacts():
-    global model, preprocessor, feature_columns
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global model, scaler, encoders
     try:
-        with open(MODEL_PATH, 'rb') as f:
-            model = pickle.load(f)
-        
-        with open(PREPROCESSOR_PATH, 'rb') as f:
-            preprocessor = pickle.load(f)
-        
-        with open(FEATURES_PATH, 'r') as f:
-            import json
-            feature_columns = json.load(f)['feature_columns']
-        
-        logger.info("Models and artifacts loaded successfully")
+        model = joblib.load('artifacts/model.pkl')
+        scaler = joblib.load('artifacts/scaler.pkl')
+        encoders = joblib.load('artifacts/encoders.pkl')
+        logger.info("Artifacts loaded successfully")
+        yield
     except Exception as e:
-        logger.error(f"Error loading artifacts: {str(e)}")
+        logger.error(f"Failed to load artifacts: {str(e)}")
+        raise RuntimeError(f"Artifact loading failed: {str(e)}")
 
-def preprocess_input(request: PredictionRequest) -> np.ndarray:
-    """Preprocess input data for prediction"""
-    # Convert to DataFrame
-    data = {
-        'age': request.age,
-        'tenure_months': request.tenure_months,
-        'monthly_spend': request.monthly_spend,
-        'support_tickets': request.support_tickets,
-        'last_login_days': request.last_login_days,
-        'satisfaction_score': request.satisfaction_score,
-        'gender': 1 if request.gender == 'Male' else 0,
-        'contract_type': 1 if request.contract_type == 'Yearly' else 0
-    }
-    
-    # Add engineered features
-    data['engagement_score'] = (data['tenure_months'] / 72) * 0.6 + (1 - data['last_login_days'] / 365) * 0.4
-    data['tickets_per_month'] = data['support_tickets'] / (data['tenure_months'] + 1)
-    data['spend_per_tenure'] = data['monthly_spend'] / (data['tenure_months'] + 1)
-    data['risk_score'] = ((data['support_tickets'] > 5) + (data['satisfaction_score'] < 4) + (data['last_login_days'] > 30)) / 3
-    data['tenure_satisfaction'] = data['tenure_months'] * data['satisfaction_score']
-    
-    # Create DataFrame with all features
-    df = pd.DataFrame([data])
-    
-    # Ensure all feature columns are present
-    for col in feature_columns:
-        if col not in df.columns:
-            df[col] = 0
-    
-    # Select and order features
-    X = df[feature_columns].values
-    
-    # Apply scaler if available
-    if preprocessor and 'scaler' in preprocessor and preprocessor['scaler']:
-        X = preprocessor['scaler'].transform(X)
-    
-    return X
+app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Middleware for request logging
+@app.middleware("http")
+async def log_requests(request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    duration = (time.time() - start_time) * 1000
+    logger.info(f"{request.method} {request.url.path} - {response.status_code} - {duration:.2f}ms")
+    return response
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     return HealthResponse(
-        status="healthy",
-        model_loaded=model is not None,
-        timestamp=datetime.now().isoformat()
+        status="ok",
+        model_loaded=model is not None
     )
 
-@app.post("/predict", response_model=PredictionResponse)
-async def predict(request: PredictionRequest):
+@app.post("/predict", response_model=PredictResponse)
+async def predict(request: PredictRequest):
     try:
-        # Preprocess input
-        features = preprocess_input(request)
+        # Convert request to DataFrame
+        input_data = pd.DataFrame([request.dict()])
         
-        # Make prediction
-        prediction = model.predict(features)[0]
-        probability = model.predict_proba(features)[0][1]
+        # Apply feature engineering
+        input_data['spend_per_tenure'] = input_data['monthly_spend'] / (input_data['tenure_months'] + 1)
+        input_data['ticket_rate'] = input_data['support_tickets'] / (input_data['tenure_months'] + 1)
+        input_data['recency_spend_ratio'] = input_data['last_login_days'] / (input_data['monthly_spend'] + 1)
+        input_data['satisfaction_risk'] = (5.0 - input_data['satisfaction_score']) * input_data['support_tickets']
         
-        return PredictionResponse(
-            customer_id=request.customer_id,
-            churn_prediction=int(prediction),
-            churn_probability=float(probability),
-            prediction_timestamp=datetime.now().isoformat(),
-            model_version="1.0.0"
+        # Apply encoders
+        input_data['gender'] = encoders['gender_encoder'].transform(input_data['gender'])
+        input_data['contract_type'] = encoders['contract_encoder'].transform(input_data[['contract_type']])
+        
+        # Apply scaler
+        input_scaled = scaler.transform(input_data)
+        
+        # Predict
+        prediction = int(model.predict(input_scaled)[0])
+        probability = float(model.predict_proba(input_scaled)[0][1])
+        
+        # Load best model name from metrics
+        import json
+        with open('artifacts/metrics.json', 'r') as f:
+            metrics = json.load(f)
+        
+        return PredictResponse(
+            churn_prediction=prediction,
+            churn_probability=probability,
+            model_used=metrics['model_name']
         )
     except Exception as e:
         logger.error(f"Prediction error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.post("/predict/batch", response_model=List[PredictionResponse])
-async def predict_batch(request: BatchPredictionRequest):
-    try:
-        responses = []
-        for customer in request.customers:
-            features = preprocess_input(customer)
-            prediction = model.predict(features)[0]
-            probability = model.predict_proba(features)[0][1]
-            
-            responses.append(PredictionResponse(
-                customer_id=customer.customer_id,
-                churn_prediction=int(prediction),
-                churn_probability=float(probability),
-                prediction_timestamp=datetime.now().isoformat(),
-                model_version="1.0.0"
-            ))
-        
-        return responses
-    except Exception as e:
-        logger.error(f"Batch prediction error: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/model/info")
-async def model_info():
-    return {
-        "model_type": type(model).__name__ if model else None,
-        "feature_count": len(feature_columns) if feature_columns else 0,
-        "features": feature_columns,
-        "preprocessor_components": list(preprocessor.keys()) if preprocessor else []
-    }
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
