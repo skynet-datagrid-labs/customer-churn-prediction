@@ -379,12 +379,15 @@ jobs:
     needs: drift-detection
     if: needs.drift-detection.outputs.drift_detected == 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - run: echo "Retraining triggered - would call gh workflow run retrain.yml"
 
   notify:
     needs: [deploy-and-test-api, drift-detection]
     runs-on: ubuntu-latest
+    permissions: {}
     steps:
       - run: |
           echo "Pipeline completed successfully"
