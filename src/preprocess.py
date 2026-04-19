@@ -1,253 +1,70 @@
-"""
-Data Preprocessing Module
-Handles missing values, encoding, scaling, and data cleaning
-"""
-
+#!/usr/bin/env python3
+import joblib
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.impute import SimpleImputer
-import pickle
-import json
-import os
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder, OrdinalEncoder
 import sys
 from pathlib import Path
-import logging
 
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
-
-class DataPreprocessor:
-    """Handles all preprocessing steps"""
-    
-    def __init__(self):
-        self.scaler = StandardScaler()
-        self.label_encoders = {}
-        self.imputer = SimpleImputer(strategy='median')
-        self.is_fitted = False
-        
-    def load_data(self, data_path: str = "artifacts/data/ingested_data.parquet") -> pd.DataFrame:
-        """Load ingested data"""
-        logger.info(f"Loading data from {data_path}")
-        self.data = pd.read_parquet(data_path)
-        logger.info(f"Loaded {len(self.data)} rows")
-        return self.data
-    
-    def handle_missing_values(self):
-        """Handle missing values in the dataset"""
-        logger.info("Handling missing values")
-        
-        missing_before = self.data.isnull().sum().sum()
-        
-        # Numerical columns - fill with median
-        numerical_cols = ['age', 'tenure_months', 'monthly_spend', 'support_tickets', 
-                         'last_login_days', 'satisfaction_score']
-        
-        for col in numerical_cols:
-            if col in self.data.columns and self.data[col].isnull().any():
-                median_val = self.data[col].median()
-                self.data[col].fillna(median_val, inplace=True)
-                logger.info(f"Filled missing values in {col} with median: {median_val}")
-        
-        # Categorical columns - fill with mode
-        categorical_cols = ['gender', 'contract_type']
-        
-        for col in categorical_cols:
-            if col in self.data.columns and self.data[col].isnull().any():
-                mode_val = self.data[col].mode()[0]
-                self.data[col].fillna(mode_val, inplace=True)
-                logger.info(f"Filled missing values in {col} with mode: {mode_val}")
-        
-        missing_after = self.data.isnull().sum().sum()
-        logger.info(f"Missing values handled: {missing_before} -> {missing_after}")
-        
-        return missing_before - missing_after
-    
-    def remove_outliers_iqr(self, columns=None, threshold=1.5):
-        """Remove outliers using IQR method"""
-        if columns is None:
-            columns = ['age', 'tenure_months', 'monthly_spend', 'support_tickets', 'last_login_days']
-        
-        rows_before = len(self.data)
-        
-        for col in columns:
-            if col in self.data.columns:
-                Q1 = self.data[col].quantile(0.25)
-                Q3 = self.data[col].quantile(0.75)
-                IQR = Q3 - Q1
-                lower_bound = Q1 - threshold * IQR
-                upper_bound = Q3 + threshold * IQR
-                
-                # Cap instead of remove for better data retention
-                self.data[col] = self.data[col].clip(lower_bound, upper_bound)
-                logger.info(f"Capped outliers in {col} to [{lower_bound:.2f}, {upper_bound:.2f}]")
-        
-        rows_after = len(self.data)
-        logger.info(f"Outlier capping completed. Rows: {rows_before} -> {rows_after}")
-        
-        return rows_before - rows_after
-    
-    def encode_categorical(self):
-        """Encode categorical variables"""
-        logger.info("Encoding categorical variables")
-        
-        categorical_cols = ['gender', 'contract_type']
-        
-        for col in categorical_cols:
-            if col in self.data.columns:
-                le = LabelEncoder()
-                self.data[col] = le.fit_transform(self.data[col])
-                self.label_encoders[col] = le
-                logger.info(f"Encoded {col}: {dict(zip(le.classes_, le.transform(le.classes_)))}")
-        
-        return self.label_encoders
-    
-    def scale_features(self, feature_columns=None):
-        """Scale numerical features"""
-        if feature_columns is None:
-            feature_columns = ['age', 'tenure_months', 'monthly_spend', 'support_tickets', 
-                              'last_login_days', 'satisfaction_score']
-        
-        # Filter to only existing columns
-        feature_columns = [col for col in feature_columns if col in self.data.columns]
-        
-        logger.info(f"Scaling features: {feature_columns}")
-        
-        # Fit and transform
-        self.data[feature_columns] = self.scaler.fit_transform(self.data[feature_columns])
-        self.is_fitted = True
-        
-        logger.info(f"Features scaled successfully")
-        
-        return feature_columns
-    
-    def create_preprocessing_pipeline(self):
-        """Run complete preprocessing pipeline"""
-        logger.info("Starting preprocessing pipeline")
-        
-        # 1. Handle missing values
-        missing_filled = self.handle_missing_values()
-        
-        # 2. Remove/cap outliers
-        outliers_capped = self.remove_outliers_iqr()
-        
-        # 3. Encode categorical variables
-        encoders = self.encode_categorical()
-        
-        # 4. Scale numerical features (will be done in feature engineering)
-        
-        logger.info("Preprocessing pipeline completed")
-        
-        return {
-            'missing_values_filled': missing_filled,
-            'outliers_capped': outliers_capped,
-            'encoders': {k: v.classes_.tolist() for k, v in encoders.items()}
-        }
-    
-    def save_preprocessed_data(self, output_path: str = "artifacts/data/preprocessed_data.pkl"):
-        """Save preprocessed data and preprocessor objects"""
-        try:
-            Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-            
-            # Save preprocessed data
-            preprocessed_data = {
-                'data': self.data,
-                'scaler': self.scaler,
-                'label_encoders': self.label_encoders,
-                'preprocessing_metadata': {
-                    'is_fitted': self.is_fitted,
-                    'num_rows': len(self.data),
-                    'num_columns': len(self.data.columns),
-                    'column_names': list(self.data.columns),
-                    'data_types': self.data.dtypes.astype(str).to_dict()
-                }
-            }
-            
-            with open(output_path, 'wb') as f:
-                pickle.dump(preprocessed_data, f)
-            
-            logger.info(f"Preprocessed data saved to {output_path}")
-            
-            # Also save a CSV version for inspection
-            csv_path = output_path.replace('.pkl', '.csv')
-            self.data.to_csv(csv_path, index=False)
-            logger.info(f"CSV version saved to {csv_path}")
-            
-            return output_path
-            
-        except Exception as e:
-            logger.error(f"Error saving preprocessed data: {str(e)}")
-            raise
-    
-    def generate_preprocessing_report(self):
-        """Generate preprocessing report"""
-        report = {
-            'original_shape': (len(self.data), len(self.data.columns)),
-            'missing_values_handled': True,
-            'outliers_capped': True,
-            'categorical_encoding': {col: le.classes_.tolist() for col, le in self.label_encoders.items()},
-            'scaling_applied': self.is_fitted,
-            'scaling_mean': self.scaler.mean_.tolist() if hasattr(self.scaler, 'mean_') else None,
-            'scaling_scale': self.scaler.scale_.tolist() if hasattr(self.scaler, 'scale_') else None,
-            'data_statistics': {
-                col: {
-                    'mean': float(self.data[col].mean()),
-                    'std': float(self.data[col].std()),
-                    'min': float(self.data[col].min()),
-                    'max': float(self.data[col].max())
-                } for col in self.data.select_dtypes(include=[np.number]).columns
-            }
-        }
-        
-        return report
-
-def main():
-    """Main execution"""
+def preprocess_data():
     try:
-        logger.info("Starting data preprocessing")
+        df = joblib.load('artifacts/raw_data.pkl')
         
-        preprocessor = DataPreprocessor()
-        preprocessor.load_data()
+        # Drop customer_id
+        X = df.drop('churn', axis=1)
+        y = df['churn']
+        X = X.drop('customer_id', axis=1)
         
-        # Run preprocessing
-        results = preprocessor.create_preprocessing_pipeline()
+        # Stratified split 80/20
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.2, random_state=42, stratify=y
+        )
         
-        # Generate report
-        report = preprocessor.generate_preprocessing_report()
+        # Encode categorical features
+        gender_encoder = LabelEncoder()
+        X_train['gender'] = gender_encoder.fit_transform(X_train['gender'])
+        X_test['gender'] = gender_encoder.transform(X_test['gender'])
         
-        # Print summary
-        print("\n" + "="*60)
-        print("PREPROCESSING SUMMARY")
-        print("="*60)
-        print(f"Data shape: {report['original_shape']}")
-        print(f"Missing values filled: {results['missing_values_filled']}")
-        print(f"Outliers capped: {results['outliers_capped']}")
-        print(f"Categorical encoders created: {len(results['encoders'])}")
+        contract_encoder = OrdinalEncoder(categories=[['Monthly', 'Annual', 'Two-Year']])
+        X_train['contract_type'] = contract_encoder.fit_transform(X_train[['contract_type']])
+        X_test['contract_type'] = contract_encoder.transform(X_test[['contract_type']])
         
-        print("\nEncoded Categories:")
-        for col, classes in results['encoders'].items():
-            print(f"  {col}: {classes}")
+        # Fill nulls with median/mode from train
+        numeric_cols = X_train.select_dtypes(include=[np.number]).columns
+        categorical_cols = X_train.select_dtypes(include=['object']).columns
         
-        print("\nNumerical Features Statistics:")
-        for col, stats in report['data_statistics'].items():
-            if col not in ['customer_id', 'churn']:
-                print(f"  {col}: mean={stats['mean']:.3f}, std={stats['std']:.3f}, "
-                      f"min={stats['min']:.3f}, max={stats['max']:.3f}")
+        for col in numeric_cols:
+            median_val = X_train[col].median()
+            X_train[col] = X_train[col].fillna(median_val)
+            X_test[col] = X_test[col].fillna(median_val)
         
-        # Save preprocessed data
-        preprocessor.save_preprocessed_data()
+        for col in categorical_cols:
+            mode_val = X_train[col].mode()[0] if len(X_train[col].mode()) > 0 else 'Unknown'
+            X_train[col] = X_train[col].fillna(mode_val)
+            X_test[col] = X_test[col].fillna(mode_val)
         
-        # Save preprocessing report
-        report_path = "artifacts/reports/preprocessing_report.json"
-        Path(report_path).parent.mkdir(parents=True, exist_ok=True)
-        with open(report_path, 'w') as f:
-            json.dump(report, f, indent=2)
+        # Save artifacts
+        Path('artifacts').mkdir(exist_ok=True)
+        joblib.dump(X_train, 'artifacts/X_train.pkl')
+        joblib.dump(X_test, 'artifacts/X_test.pkl')
+        joblib.dump(y_train, 'artifacts/y_train.pkl')
+        joblib.dump(y_test, 'artifacts/y_test.pkl')
         
-        print("\n✅ Data preprocessing completed successfully!")
+        encoders = {
+            'gender_encoder': gender_encoder,
+            'contract_encoder': contract_encoder
+        }
+        joblib.dump(encoders, 'artifacts/encoders.pkl')
+        
+        print(f"X_train shape: {X_train.shape}")
+        print(f"X_test shape: {X_test.shape}")
+        print(f"y_train shape: {y_train.shape}")
+        print(f"y_test shape: {y_test.shape}")
         
     except Exception as e:
-        logger.error(f"Data preprocessing failed: {str(e)}")
+        print(f"ERROR in preprocessing: {str(e)}")
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()
+    preprocess_data()
