@@ -7,11 +7,10 @@ from pathlib import Path
 
 def ingest_data(file_path):
     try:
-        if len(sys.argv) < 2:
+        if not file_path:
             print("Usage: python src/ingest.py <path_to_excel_file>")
             sys.exit(1)
-        
-        file_path = sys.argv[1]
+
         if not os.path.exists(file_path):
             print(f"ERROR: File not found - {file_path}")
             sys.exit(1)

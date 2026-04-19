@@ -15,7 +15,7 @@ The pipeline uses customer data with the following features:
 - **contract_type**: Monthly or Yearly
 - **support_tickets**: Number of support tickets
 - **last_login_days**: Days since last login
-- **satisfaction_score**: 1-10 satisfaction rating
+- **satisfaction_score**: 1–5 satisfaction rating (float)
 - **churn**: Target variable (0=No churn, 1=Churn)
 
 ## 🏗️ Architecture

@@ -39,6 +39,8 @@ def engineer_features():
         joblib.dump(X_train_fe, 'artifacts/X_train_fe.pkl')
         joblib.dump(X_test_fe, 'artifacts/X_test_fe.pkl')
         joblib.dump(scaler, 'artifacts/scaler.pkl')
+        joblib.dump(list(X_train_fe.columns), 'artifacts/feature_names.pkl')
+        joblib.dump({'spend_75th': spend_75th}, 'artifacts/fe_params.pkl')
         
         print(f"Feature list: {list(X_train_fe.columns)}")
         print(f"Train shape: {X_train_fe.shape}")

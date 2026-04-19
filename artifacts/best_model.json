@@ -1,0 +1,19 @@
+{
+  "best_model_name": "logistic_regression",
+  "best_model_path": "artifacts/model_logistic_regression.pkl",
+  "selection_criterion": "f1_then_roc_auc",
+  "all_scores": {
+    "logistic_regression": {
+      "f1": 0.11398963730569948,
+      "roc_auc": 0.7534707903780069
+    },
+    "random_forest": {
+      "f1": 0.0,
+      "roc_auc": 0.5895189003436425
+    },
+    "xgboost": {
+      "f1": 0.04081632653061224,
+      "roc_auc": 0.4435051546391753
+    }
+  }
+}
