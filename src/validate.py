@@ -57,7 +57,7 @@ def validate_data():
         valid_genders = ['Male', 'Female', 'Other']
         invalid_genders = df[~df['gender'].isin(valid_genders)]['gender'].unique()
         if len(invalid_genders) > 0:
-            print(f"FAIL: Invalid genders: {invalid_genders}")
+            print(f"FAIL: Invalid gender values detected (count={len(invalid_genders)})")
             sys.exit(1)
         print("PASS: gender valid")
         
