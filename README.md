@@ -1,5 +1,4 @@
-# ML Company Workflow - Production ML Pipeline
-
+# ML Company Workflow - Production ML Pipelin
 ## 🚀 Overview
 
 A production-grade, fully automated ML pipeline for customer churn prediction. This repository demonstrates a complete MLOps workflow using GitHub Actions for automation, including data validation, feature engineering, model training, evaluation, deployment, monitoring, and retraining.
@@ -78,6 +77,7 @@ The pipeline uses customer data with the following features:
 - GitHub Actions enabled
 
 ### Running the Pipeline
+![ML-WORKFLOW-VIZUALIZED](https://github.com/skynet-datagrid-labs/ml-company-workflow2/actions/runs/24665414904)
 
 1. **Push to trigger pipeline:**
 ```bash
