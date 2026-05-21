@@ -17,7 +17,7 @@ A production-grade, fully automated machine learning pipeline for customer churn
 ## **`Live-Demonstration`**
 
 <p align="center">
-  <img src="assets/mlpipeline.gif" alt="Production ML pipeline execution workflow" width="90%">
+  <img src="assets/ML-churn.gif" alt="Production ML pipeline execution workflow" width="90%">
 </p>
 
 *End-to-end pipeline visualization: data ingestion → validation → feature engineering → parallel model training → evaluation → deployment.*
