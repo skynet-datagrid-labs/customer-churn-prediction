@@ -2,7 +2,8 @@
 ## 🚀 Overview
 
 A production-grade, fully automated ML pipeline for customer churn prediction. This repository demonstrates a complete MLOps workflow using GitHub Actions for automation, including data validation, feature engineering, model training, evaluation, deployment, monitoring, and retraining.
-
+## *LiveDEmo**
+assets/mlpipeline.gif
 ## 📊 Dataset
 
 The pipeline uses customer data with the following features:
