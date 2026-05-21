@@ -1,7 +1,7 @@
 
 ---
 
-# Customer Churn Prediction: Production ML Pipeline
+# **`Customer Churn Prediction: Production ML Pipeline`**
 
 **MLOps • GitHub Actions • Scikit-learn • XGBoost • FastAPI**
 
@@ -14,7 +14,7 @@ A production-grade, fully automated machine learning pipeline for customer churn
 
 ---
 
-## Interactive Demonstration
+## **`Live-Demonstration`**
 
 <p align="center">
   <img src="assets/mlpipeline.gif" alt="Production ML pipeline execution workflow" width="90%">
